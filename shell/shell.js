@@ -216,14 +216,46 @@
     const clearBtn = search.querySelector(".clear");
     hub.appendChild(search);
 
+    // pinned games sit up top, bigger and centered
+    const pinnedGrid = el("div", "hub-grid pinned");
+    hub.appendChild(pinnedGrid);
     const grid = el("div", "hub-grid");
     hub.appendChild(grid);
     const empty = el("div", "hub-empty", "No games match that. Try another word.");
     empty.style.display = "none";
     hub.appendChild(empty);
 
+    const pins = new Set(storage.get("pref:pins", []));
+    function savePins() { storage.set("pref:pins", Array.from(pins)); }
+
+    // build one game card (used in both grids). `big` = pinned styling.
+    function makeCard(g, big) {
+      const card = el("div", "card" + (big ? " big" : ""));
+      card.style.setProperty("--card-accent", g.accent);
+      const best = storage.game(g.id).best();
+      const nameHtml = g.name.replace(/\*(.+?)\*/g, "<b>$1</b>");
+      const pinned = pins.has(g.id);
+      card.innerHTML =
+        '<button class="pin' + (pinned ? " on" : "") + '" title="' +
+          (pinned ? "unpin" : "pin — keep it up top") + '">' + (pinned ? "★" : "☆") + "</button>" +
+        '<div class="dot"></div>' +
+        "<h3>" + nameHtml + "</h3>" +
+        '<div class="tag">' + g.tagline + "</div>" +
+        '<div class="foot"><span>' + g.controls + "</span>" +
+        (best ? '<span class="best">best ' + best + "</span>" : "<span></span>") + "</div>";
+      card.onclick = () => launch(g.id);
+      const pinBtn = card.querySelector(".pin");
+      pinBtn.onclick = (e) => {
+        e.stopPropagation();                 // don't launch when toggling the star
+        if (pins.has(g.id)) pins.delete(g.id); else pins.add(g.id);
+        savePins();
+        build(input.value);                  // re-render both grids
+      };
+      return card;
+    }
+
     function build(q) {
-      clear(grid);
+      clear(pinnedGrid); clear(grid);
       const needle = (q || "").trim().toLowerCase();
       let shown = 0;
       A.games.forEach((g) => {
@@ -231,19 +263,10 @@
           .replace(/\*/g, "").toLowerCase();
         if (needle && hay.indexOf(needle) === -1) return;
         shown++;
-        const card = el("div", "card");
-        card.style.setProperty("--card-accent", g.accent);
-        const best = storage.game(g.id).best();
-        const nameHtml = g.name.replace(/\*(.+?)\*/g, "<b>$1</b>");
-        card.innerHTML =
-          '<div class="dot"></div>' +
-          "<h3>" + nameHtml + "</h3>" +
-          '<div class="tag">' + g.tagline + "</div>" +
-          '<div class="foot"><span>' + g.controls + "</span>" +
-          (best ? '<span class="best">best ' + best + "</span>" : "<span></span>") + "</div>";
-        card.onclick = () => launch(g.id);
-        grid.appendChild(card);
+        const isPinned = pins.has(g.id);
+        (isPinned ? pinnedGrid : grid).appendChild(makeCard(g, isPinned));
       });
+      pinnedGrid.style.display = pinnedGrid.children.length ? "" : "none";
       empty.style.display = shown ? "none" : "";
       clearBtn.classList.toggle("show", !!needle);
     }

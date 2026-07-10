@@ -337,6 +337,37 @@ html, body {
 }
 .card .foot .best { color: var(--accent-ink); }
 
+/* pin star — top-left, hollow by default, gold when pinned */
+.card .pin {
+  position: absolute;
+  top: 10px; left: 12px;
+  background: none; border: none;
+  font-size: 22px; line-height: 1;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 2px 4px;
+  z-index: 3;
+  transition: color 120ms, transform 100ms, text-shadow 120ms;
+}
+.card .pin:hover { color: #f5d24a; transform: scale(1.15); }
+.card .pin.on { color: #f5d24a; text-shadow: 0 0 10px rgba(245,210,74,0.7), 0 0 20px rgba(245,210,74,0.4); }
+.card h3 { padding-left: 26px; }   /* clear the star */
+
+/* pinned row: bigger cards, centered above the main grid */
+.hub-grid.pinned {
+  grid-template-columns: repeat(auto-fit, minmax(340px, max-content));
+  justify-content: center;
+  gap: 26px;
+  margin-bottom: 30px;
+  padding-bottom: 26px;
+  border-bottom: 1px solid var(--line);
+}
+.card.big { padding: 34px 34px 28px; min-width: 340px; }
+.card.big .dot { width: 18px; height: 18px; margin-bottom: 20px; }
+.card.big h3 { font-size: 30px; }
+.card.big .tag { font-size: 17px; min-height: 0; margin-top: 8px; }
+.card.big .pin { font-size: 26px; }
+
 /* ---- overlays (start screen, game over, break over) ---- */
 .overlay {
   position: absolute;

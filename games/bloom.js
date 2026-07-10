@@ -27,6 +27,11 @@
       let wilt;               // 0..1 transient dim
       let hitFlash;           // 0..1 pulse when a petal lands
       let accRgb;
+      let ringScale;          // current marker-ring size multiplier (randomized per blossom)
+      let ringScaleTarget;    // eases toward this so the ring resizes smoothly
+
+      // pick a fresh random ring size — big, small, medium, whatever
+      function randomRingScale() { return 0.45 + Math.random() * 0.75; }   // 0.45x .. 1.20x
 
       function hexToRgb(hex) {
         const h = (hex || "#dc7fc8").replace("#", "");
@@ -59,6 +64,8 @@
         rot = 0;
         wilt = 0;
         hitFlash = 0;
+        ringScale = randomRingScale();
+        ringScaleTarget = ringScale;
       }
 
       // ring capacities: 6, 12, 18, ... find ring + position for petal index i
@@ -71,7 +78,9 @@
         }
       }
 
-      function fitRadius() { return Math.min(cssW, cssH) * 0.5 * 0.80; }
+      // max the ring could ever be; the live marker uses this * ringScale
+      function maxFit() { return Math.min(cssW, cssH) * 0.5 * 0.80; }
+      function fitRadius() { return maxFit() * ringScale; }
 
       function distToBeat() { return Math.min(beatClock, BEAT - beatClock); }
 
@@ -86,6 +95,8 @@
           hitFlash = 1;
           wilt = Math.max(0, wilt - 0.3);
           ctx.setScore(petals.length);
+          // every blossom re-randomizes the marker-ring radius (big/small/medium)
+          ringScaleTarget = randomRingScale();
         } else {
           // off-beat: gentle wilt, never punishing
           wilt = Math.min(1, wilt + 0.5);
@@ -94,6 +105,8 @@
       }
 
       function update(dt) {
+        // ease the ring toward its target size so it grows/shrinks smoothly
+        ringScale += (ringScaleTarget - ringScale) * Math.min(1, dt / 260);
         beatClock += dt;
         if (beatClock >= BEAT) { beatClock -= BEAT; lastBeatFlash = 0; ctx.audio.tone(880, 0.03, { type: "sine", vol: 0.022 }); }
         lastBeatFlash += dt;

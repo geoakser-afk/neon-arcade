@@ -36,7 +36,7 @@
         1: ["Husks & the crank", "HUSKS (red) creep the halls to your doors — seal a door before one arrives. If a Husk presses a sealed door, DON'T open (the door glows red 'HELD') until it leaves. Meanwhile POWER drains: wind the CRANK in the middle to keep it up."],
         2: ["The vents", "Raise the monitor to flush the vent before it overflows."],
         3: ["The Stalker", "The STALKER (red) stirs in the vent — it only creeps toward you while you watch the cam, so don't linger on the monitor."],
-        4: ["The Wisp", "The WISP (green, barely visible) comes ONLY down the LEFT hall, and only when nothing else is attacking. Sealing won't stop it — one FLASH of the LEFT light drives it away. Just don't let it reach you first."],
+        4: ["The Wisp", "The WISP (green, barely visible) comes ONLY down the LEFT hall, and only when nothing else is attacking. Sealing won't stop it — hit the FLASH button (under the crank) once to drive it away. Just don't let it reach you first."],
         5: ["The Leech", "The LEECH (purple) latches onto your power bar and drains it fast. Click the leech to knock it off — it'll keep coming back."]
       };
 
@@ -118,17 +118,14 @@
           leftDoor: { x: 0, y: S * 0.14, w: S * 0.29, h: S * 0.60 },
           rightDoor: { x: S * 0.71, y: S * 0.14, w: S * 0.29, h: S * 0.60 },
           // crank sits centered in the middle of the office (the empty desk area)
-          crank: { x: S * 0.34, y: S * 0.40, w: S * 0.32, h: S * 0.22 },
+          crank: { x: S * 0.34, y: S * 0.38, w: S * 0.32, h: S * 0.22 },
+          // FLASH button lives under the crank (out of the door-seal zones)
+          flash: { x: S * 0.36, y: S * 0.63, w: S * 0.28, h: S * 0.075 },
           monTab: { x: S * 0.30, y: S * 0.82, w: S * 0.40, h: S * 0.12 },
           full: { x: 0, y: 0, w: S, h: S }
         };
       }
 
-      // small light button inside a doorway (only meaningful once unlocked)
-      function lightBtn(door) {
-        return { x: door.x + door.w * 0.2, y: door.y + door.h - door.h * 0.13,
-                 w: door.w * 0.6, h: door.h * 0.1 };
-      }
 
       // the Leech clings to the RIGHT end of the power bar (where it's draining
       // from). A generous square hitbox so it's easy to click off.
@@ -242,23 +239,23 @@
           d.closed = false;
           ctx.audio.thunk();
         } else {
-          // sealing
+          // sealing — purely defensive. It does NOT scare the Husk off; the Husk
+          // still arrives and presses (siege). Seal BEFORE it reaches you. If it's
+          // already pressing, sealing again does nothing.
           d.closed = true;
           ctx.audio.thunk();
-          if (h.active && h.prox >= WARN && h.siege <= 0) h.retreating = true;
         }
       }
-      // LEFT light flash — the Wisp's counter. Each flash lights the hall briefly
-      // and shoves the Wisp back; spam it to drive the Wisp away.
-      function flickLight(side) {
+      // FLASH (center button, under the crank) — drives the Wisp off in one hit.
+      function doFlash() {
         if (over || monitorUp || blackout || !has("wisp")) return;
-        lights[side].until = anim + 900;
+        lights.L.until = anim + 900;
         power = Math.max(0, power - lightCost);
         ctx.audio.tone(560, 0.09, { type: "sine", vol: 0.06 });
-        if (side === "L" && wisp.active) {
+        if (wisp.active) {
           wisp.prox = Math.max(0, wisp.prox - WISP_FLASH_PUSH);
-          ctx.audio.tone(660, 0.12, { type: "sine", vol: 0.09, glide: 900 }); // recoil chirp
-          if (wisp.prox <= 0) { wisp = newWisp(night); }                       // fully driven off
+          ctx.audio.tone(660, 0.12, { type: "sine", vol: 0.09, glide: 900 });
+          if (wisp.prox <= 0) wisp = newWisp(night);   // fully driven off
         }
       }
       // click the Leech off the power bar
@@ -455,12 +452,14 @@
             (halls.R.active && !halls.R.retreating) || halls.R.siege > 0 ||
             (has("stalker") && creep > 0.05) ||
             (has("leech") && leech.latched);
-          if (!wisp.active) {
-            if (!othersBusy) {
-              wisp.wait -= dt;
-              if (wisp.wait <= 0) { wisp.active = true; wisp.prox = 0.05; wisp.pinged = false; wispCue(); }
-            }
-          } else if (!othersBusy) {
+          if (othersBusy) {
+            // another monster is live — the Wisp fully backs off and disappears
+            // (never on screen alongside a Husk). It'll return in a quiet moment.
+            if (wisp.active) wisp = newWisp(night);
+          } else if (!wisp.active) {
+            wisp.wait -= dt;
+            if (wisp.wait <= 0) { wisp.active = true; wisp.prox = 0.05; wisp.pinged = false; wispCue(); }
+          } else {
             wisp.prox += wispSpeed(night) * dt;
             if (!wisp.pinged && wisp.prox >= 0.45) { wisp.pinged = true; wispCue(); }
             if (wisp.prox >= 1) { breach("wisp"); return; }
@@ -629,8 +628,7 @@
         const inWarn = threat >= WARN, inDanger = threat >= DANGER;
         const closed = doors[side].closed;
         const litUntil = lights[side].until;
-        const isLit = has("wisp") && side === "L" && anim < litUntil;
-        const showLight = has("wisp") && side === "L";     // only the left door gets a light
+        const isLit = has("wisp") && side === "L" && anim < litUntil;   // hall flood from FLASH
 
         g.save();
         pathRR(r.x, r.y, r.w, r.h, 6); g.clip();
@@ -680,15 +678,15 @@
           g.fillStyle = "rgba(2,5,7," + (0.4 + threat * 0.35) + ")";
           g.beginPath(); g.arc(cxp, cyp, rad * 0.32, 0, Math.PI * 2); g.fill();
 
-          // "about to siege" tell: once the Husk hits the DANGER band (nearly at
-          // the door), the doorway washes yellow so you know to seal NOW.
-          if (inDanger) {
-            const yp = reduced ? 1 : 0.6 + Math.abs(Math.sin(anim * 0.012)) * 0.4;
-            const yg = g.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
-            yg.addColorStop(0, "rgba(240,210,70," + (0.24 * yp) + ")");
-            yg.addColorStop(1, "rgba(240,190,50," + (0.08 * yp) + ")");
-            g.fillStyle = yg; g.fillRect(r.x, r.y, r.w, r.h);
-          }
+          // Siege-Husk tell: the doorway washes yellow for the WHOLE time a Husk
+          // is approaching this door (from the moment it spawns), intensifying as
+          // it nears — so you always know which door has a Husk coming.
+          const yp = reduced ? 1 : 0.6 + Math.abs(Math.sin(anim * 0.012)) * 0.4;
+          const yi = 0.12 + threat * 0.24;                 // ramps up as it nears
+          const yg = g.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
+          yg.addColorStop(0, "rgba(240,210,70," + (yi * yp) + ")");
+          yg.addColorStop(1, "rgba(240,190,50," + (yi * 0.35 * yp) + ")");
+          g.fillStyle = yg; g.fillRect(r.x, r.y, r.w, r.h);
         }
 
         const sieging = h.siege > 0 && h.knocking <= 0;   // pressing: DON'T open
@@ -712,15 +710,10 @@
         }
         g.restore();
 
-        // frame — yellow in the DANGER band ("about to siege, seal now"), red
-        // only once it's actually pressing a sealed door.
-        const YEL = "rgba(240,205,60,0.95)";
-        const bcol = sieging ? acc(0.95) : knocking ? cy(0.75) : inDanger ? YEL : inWarn ? acc(0.6) : cy(0.32);
+        // frame
+        const bcol = sieging ? acc(0.95) : knocking ? cy(0.75) : inDanger ? acc(0.92) : inWarn ? acc(0.6) : cy(0.32);
         g.save();
-        if (sieging || inWarn) {
-          g.shadowColor = sieging ? acc(0.9) : inDanger ? "rgba(240,205,60,0.85)" : acc(0.5);
-          g.shadowBlur = sieging ? 34 : inDanger ? 30 : 15;
-        }
+        if (sieging || inWarn) { g.shadowColor = sieging ? acc(0.9) : acc(inDanger ? 0.85 : 0.5); g.shadowBlur = sieging ? 34 : inDanger ? 30 : 15; }
         g.strokeStyle = bcol; g.lineWidth = sieging || inWarn ? 3 : 1.6;
         pathRR(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 6); g.stroke();
         g.restore();
@@ -737,32 +730,13 @@
         if (sieging) { stateTxt = "HELD — don't open"; stateCol = acc(0.6 + Math.sin(anim * 0.02) * 0.4); }
         else if (knocking) { stateTxt = "it's gone · click: open"; stateCol = cy(0.95); }
         else if (closed) { stateTxt = "SEALED"; stateCol = cy(0.75); }
-        else if (inDanger) { stateTxt = "SEAL NOW"; stateCol = "rgba(240,205,60," + (0.7 + Math.sin(anim * 0.02) * 0.3) + ")"; }
         else { stateTxt = "click: seal"; stateCol = inWarn ? acc(0.9) : cy(0.45); }
         g.fillStyle = stateCol;
         g.font = "700 " + Math.round(r.w * (sieging ? 0.07 : 0.072)) + "px system-ui, sans-serif";
-        g.fillText(stateTxt, r.x + r.w / 2, r.y + r.h * (showLight ? 0.78 : 0.92));
-
-        // LEFT light button (night 4+, Wisp's counter) — green when lit
-        if (showLight) {
-          const lb = lightBtn(r);
-          const wispNear = wisp.active && wisp.prox > 0.3;
-          g.save();
-          pathRR(lb.x, lb.y, lb.w, lb.h, 6);
-          g.fillStyle = isLit ? grn(0.3) : (wispNear ? grn(0.14) : "rgba(10,16,20,0.9)");
-          g.fill();
-          g.strokeStyle = isLit ? grn(0.8) : wispNear ? grn(0.6) : cy(0.35); g.lineWidth = 1.5;
-          if (isLit || wispNear) { g.shadowColor = grn(0.5); g.shadowBlur = isLit ? 14 : 9; }
-          pathRR(lb.x, lb.y, lb.w, lb.h, 6); g.stroke();
-          g.restore();
-          g.fillStyle = isLit ? grn(0.95) : cy(0.65);
-          g.font = "700 " + Math.round(lb.h * 0.48) + "px system-ui, sans-serif";
-          g.textAlign = "center"; g.textBaseline = "middle";
-          g.fillText("💡 FLASH", lb.x + lb.w / 2, lb.y + lb.h / 2);
-        }
+        g.fillText(stateTxt, r.x + r.w / 2, r.y + r.h * 0.92);
 
         if (inDanger && !closed) {
-          g.fillStyle = "rgba(240,205,60," + (0.55 + Math.sin(anim * 0.013) * 0.4) + ")";
+          g.fillStyle = acc(0.55 + Math.sin(anim * 0.013) * 0.4);
           g.font = "800 " + Math.round(r.w * 0.16) + "px system-ui, sans-serif";
           g.textAlign = "center"; g.textBaseline = "middle";
           g.fillText("!", r.x + r.w / 2, r.y + r.h * 0.42);
@@ -781,8 +755,29 @@
           g.fillText("survive the night", S / 2, S * 0.5);
         }
 
+        // ---- FLASH button (night 4+) under the crank — the Wisp's counter ----
+        if (has("wisp")) drawFlashBtn();
+
         // ---- monitor tab (night 3+) at the bottom ----
         if (has("vent")) drawMonTab();
+      }
+
+      function drawFlashBtn() {
+        const f = L.flash;
+        const lit = anim < lights.L.until;
+        const wispNear = wisp.active && wisp.prox > 0.25;
+        g.save();
+        pathRR(f.x, f.y, f.w, f.h, 8);
+        g.fillStyle = lit ? grn(0.32) : (wispNear ? grn(0.16) : "rgba(12,18,22,0.95)");
+        g.fill();
+        g.strokeStyle = lit ? grn(0.85) : wispNear ? grn(0.6) : cy(0.35); g.lineWidth = 2;
+        if (lit || wispNear) { g.shadowColor = grn(0.55); g.shadowBlur = (lit ? 16 : 10) + (wispNear && !reduced ? Math.abs(Math.sin(anim * 0.01)) * 8 : 0); }
+        pathRR(f.x, f.y, f.w, f.h, 8); g.stroke();
+        g.restore();
+        g.fillStyle = lit ? grn(0.95) : (wispNear ? grn(0.85) : cy(0.7));
+        g.font = "700 " + Math.round(f.h * 0.42) + "px system-ui, sans-serif";
+        g.textAlign = "center"; g.textBaseline = "middle";
+        g.fillText("💡 FLASH", f.x + f.w / 2, f.y + f.h / 2);
       }
 
       function drawCrank() {
@@ -1098,15 +1093,12 @@
           if (monitorUp) { setMonitor(false); return; }
           // Leech first — it sits over the power bar / top area
           if (has("leech") && leech.latched && inRect(leechRect(), x, y)) { grabLeech(); return; }
+          if (has("wisp") && inRect(L.flash, x, y)) { doFlash(); return; }
           if (has("crank") && inRect(L.crank, x, y)) { windCrank(); return; }
           if (has("vent") && inRect(L.monTab, x, y)) { setMonitor(true); return; }
-          // doorways — left door has a FLASH button (Wisp) vs seal
-          ["L", "R"].forEach(function (side) {
-            const r = side === "L" ? L.leftDoor : L.rightDoor;
-            if (!inRect(r, x, y)) return;
-            if (side === "L" && has("wisp") && inRect(lightBtn(r), x, y)) flickLight("L");
-            else toggleDoor(side);
-          });
+          // doorways — click to seal / open
+          if (inRect(L.leftDoor, x, y)) { toggleDoor("L"); return; }
+          if (inRect(L.rightDoor, x, y)) { toggleDoor("R"); return; }
         },
 
         tick(dt) { update(dt); draw(); },
