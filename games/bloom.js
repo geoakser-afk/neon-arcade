@@ -229,27 +229,29 @@
         g.fill();
         g.restore();
 
-        // petal count + all-time best, centered under the core
+        // petal count + all-time best — pinned to the BOTTOM so it never sits
+        // under the growing flower or the prompt.
+        const baseY = cssH - Math.min(cssW, cssH) * 0.11;
         g.save();
         g.textAlign = "center";
-        g.fillStyle = rgba(mixWhite(accRgb, 0.6), 0.9);
+        g.fillStyle = rgba(mixWhite(accRgb, 0.6), 0.92);
         g.font = "800 " + Math.round(Math.min(cssW, cssH) * 0.05) + "px system-ui, sans-serif";
-        g.textBaseline = "middle";
-        g.fillText(String(petals.length), cx, cy);
+        g.textBaseline = "alphabetic";
+        g.fillText(String(petals.length) + " petals", cx, baseY);
         g.fillStyle = rgba(mixWhite(accRgb, 0.4), 0.5);
-        g.font = "600 " + Math.round(Math.min(cssW, cssH) * 0.022) + "px system-ui, sans-serif";
+        g.font = "600 " + Math.round(Math.min(cssW, cssH) * 0.024) + "px system-ui, sans-serif";
         g.textBaseline = "top";
-        g.fillText("best " + best, cx, cy + Math.min(cssW, cssH) * 0.035);
+        g.fillText("best " + best, cx, baseY + Math.min(cssW, cssH) * 0.012);
         g.restore();
 
-        // gentle "click to bloom" prompt before first petal
+        // gentle "click to bloom" prompt before first petal — sits ABOVE the core
         if (!petals.length) {
           g.save();
           g.globalAlpha = 0.55 + 0.2 * Math.sin(now * 0.003);
           g.fillStyle = rgba(mixWhite(accRgb, 0.6), 0.9);
-          g.font = Math.round(cssW * 0.04) + "px system-ui, sans-serif";
+          g.font = Math.round(cssW * 0.038) + "px system-ui, sans-serif";
           g.textAlign = "center";
-          g.fillText("click when the ring meets the edge", cx, cy);
+          g.fillText("click when the ring meets the edge", cx, cy - Math.min(cssW, cssH) * 0.14);
           g.restore();
         }
       }
