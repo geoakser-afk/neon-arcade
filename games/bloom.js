@@ -229,19 +229,22 @@
         g.fill();
         g.restore();
 
-        // petal count + all-time best — pinned to the BOTTOM so it never sits
-        // under the growing flower or the prompt.
-        const baseY = cssH - Math.min(cssW, cssH) * 0.11;
+        // petal count + all-time best — in the MIDDLE of the blossoms. Drawn on
+        // top of the flower (later in draw order) with a soft dark disc behind it
+        // so it stays readable through the petals.
+        const m = Math.min(cssW, cssH);
         g.save();
         g.textAlign = "center";
-        g.fillStyle = rgba(mixWhite(accRgb, 0.6), 0.92);
-        g.font = "800 " + Math.round(Math.min(cssW, cssH) * 0.05) + "px system-ui, sans-serif";
-        g.textBaseline = "alphabetic";
-        g.fillText(String(petals.length) + " petals", cx, baseY);
-        g.fillStyle = rgba(mixWhite(accRgb, 0.4), 0.5);
-        g.font = "600 " + Math.round(Math.min(cssW, cssH) * 0.024) + "px system-ui, sans-serif";
+        g.beginPath(); g.arc(cx, cy, m * 0.075, 0, Math.PI * 2);
+        g.fillStyle = "rgba(8,6,12,0.55)"; g.fill();
+        g.fillStyle = rgba(mixWhite(accRgb, 0.7), 0.95);
+        g.font = "800 " + Math.round(m * 0.055) + "px system-ui, sans-serif";
+        g.textBaseline = "middle";
+        g.fillText(String(petals.length), cx, cy - m * 0.012);
+        g.fillStyle = rgba(mixWhite(accRgb, 0.45), 0.6);
+        g.font = "600 " + Math.round(m * 0.022) + "px system-ui, sans-serif";
         g.textBaseline = "top";
-        g.fillText("best " + best, cx, baseY + Math.min(cssW, cssH) * 0.012);
+        g.fillText("best " + best, cx, cy + m * 0.028);
         g.restore();
 
         // gentle "click to bloom" prompt before first petal — sits ABOVE the core

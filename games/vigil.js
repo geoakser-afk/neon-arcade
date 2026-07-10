@@ -68,8 +68,10 @@
       function siegeChance(n) { return Math.min(0.8, 0.08 + n * 0.07); } // n1≈.15, n4≈.36, n5≈.43
       const SIEGE_MS = 3600;                    // how long a siege Husk presses
       const KNOCK_LOCK_MS = 700;                // brief lock as it leaves
-      // Dual-door attacks (both halls active at once) only start at night 6.
-      function allowDual(n) { return n >= 6; }
+      // Dual-door attacks (both halls active at once) CAN happen before night 6,
+      // just rarely — the odds a second Husk is allowed to arm while one's live.
+      // Ramps up with the night; always allowed from 6+.
+      function dualChance(n) { return n >= 6 ? 1 : Math.min(0.5, 0.06 + n * 0.06); } // n1≈.12, n4≈.30, n5≈.36
 
       function acc(a) { return "rgba(" + AR + "," + AG + "," + AB + "," + a + ")"; }
       function cy(a) { return "rgba(" + CY + "," + a + ")"; }
@@ -399,8 +401,8 @@
         }
 
         // ---- hall Husks ----
-        // Is a Husk already engaged (approaching/at a door) on EITHER side? Before
-        // night 6 only one hall may be active at a time — no dual-door attacks.
+        // Is a Husk already engaged (approaching/at a door) on EITHER side? Used to
+        // gate dual-door attacks (see dualChance) so they stay rare on early nights.
         function busyHall() {
           return ["L", "R"].some(function (s) {
             const hh = halls[s];
@@ -414,8 +416,9 @@
           if (!h.active) {
             h.wait -= dt;
             if (h.wait <= 0) {
-              // don't arm this hall if another Husk is live and dual isn't allowed
-              if (!allowDual(night) && busyHall()) { h.wait = 400; return; }
+              // if another Husk is live, only sometimes allow a dual-door attack
+              // (rare early, common by night 6+). Otherwise wait for a gap.
+              if (busyHall() && Math.random() > dualChance(night)) { h.wait = 500; return; }
               h.active = true; h.prox = 0.03; h.warned = false; h.retreating = false;
               h.isSiege = Math.random() < siegeChance(night);   // decide its type now
             }
@@ -450,9 +453,10 @@
                 // siege Husk → locks the sealed door (yellow glow, can't open)
                 h.prox = 1; h.siege = 0.0001;
               } else {
-                // harmless Husk → just bonks the sealed door and leaves. You could
-                // have closed→reopened around it freely.
-                h.retreating = true;
+                // harmless Husk → hits the sealed door and is INSTANTLY gone (no
+                // lingering recede). Seal in time and it just vanishes; reopen freely.
+                halls[side] = newHall(hallDelay(night));
+                ctx.audio.tone(side === "L" ? 150 : 190, 0.1, { type: "sine", vol: 0.05, glide: 90 });
               }
             } else {
               // reaches an OPEN door → takes you at once (either type)
