@@ -17,6 +17,7 @@
       let W = 0, H = 0, dpr = 1;
       let paddle, balls, bricks, powerups, particles, lasers;
       let score, level, lives, combo, comboTimer, running, launched, over;
+      let elapsed;   // ms the ball has been in play this life — ramps ball speed
       let wideT, laserT, laserCd, slowT, shake, flash;
       const COLS = 9;
 
@@ -73,7 +74,13 @@
         }
       }
 
-      function ballSpeed() { return H * (0.6 + level * 0.03); }
+      // ball speed rises with level AND with time in play — the longer a rally
+      // goes, the faster it gets (creeps up ~+0.10 every 20s, capped so it stays
+      // playable). Slow-mo powerup still applies on top in step().
+      function ballSpeed() {
+        const timeBoost = Math.min(0.5, (elapsed / 1000) * 0.005);
+        return H * (0.6 + level * 0.03 + timeBoost);
+      }
 
       function newBall(x, y, vx, vy) {
         const rad = Math.max(5, W * 0.013);
@@ -97,7 +104,7 @@
 
       function resetState() {
         score = 0; level = 1; lives = 3; over = false; running = true;
-        shake = 0; flash = 0;
+        shake = 0; flash = 0; elapsed = 0;
         newLevel();
         ctx.setScore(0);
       }
@@ -107,6 +114,7 @@
       function launch() {
         if (launched || over) return;
         launched = true;
+        elapsed = 0;   // speed ramp restarts each serve
         const ang = Math.random() * 0.5 - 0.25;
         balls.forEach(function (b) { b.vx = Math.sin(ang) * ballSpeed(); b.vy = -Math.cos(ang) * ballSpeed(); });
       }
@@ -249,6 +257,17 @@
         }
 
         if (!launched) return;
+
+        // time-in-play ramp: the longer the rally, the faster the ball. Renormalize
+        // each ball's velocity toward the current target speed so it creeps up
+        // continuously (not just on the next bounce).
+        elapsed += dt;
+        const target = ballSpeed();
+        for (let bi = 0; bi < balls.length; bi++) {
+          const bl = balls[bi];
+          const mag = Math.hypot(bl.vx, bl.vy);
+          if (mag > 1) { const k = target / mag; bl.vx *= k; bl.vy *= k; }
+        }
 
         // move each ball
         for (let bi = balls.length - 1; bi >= 0; bi--) {
