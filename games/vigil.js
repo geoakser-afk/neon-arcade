@@ -679,6 +679,16 @@
           g.fillStyle = gr; g.fillRect(r.x, r.y, r.w, r.h);
           g.fillStyle = "rgba(2,5,7," + (0.4 + threat * 0.35) + ")";
           g.beginPath(); g.arc(cxp, cyp, rad * 0.32, 0, Math.PI * 2); g.fill();
+
+          // "about to siege" tell: once the Husk hits the DANGER band (nearly at
+          // the door), the doorway washes yellow so you know to seal NOW.
+          if (inDanger) {
+            const yp = reduced ? 1 : 0.6 + Math.abs(Math.sin(anim * 0.012)) * 0.4;
+            const yg = g.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
+            yg.addColorStop(0, "rgba(240,210,70," + (0.24 * yp) + ")");
+            yg.addColorStop(1, "rgba(240,190,50," + (0.08 * yp) + ")");
+            g.fillStyle = yg; g.fillRect(r.x, r.y, r.w, r.h);
+          }
         }
 
         const sieging = h.siege > 0 && h.knocking <= 0;   // pressing: DON'T open
@@ -702,10 +712,15 @@
         }
         g.restore();
 
-        // frame
-        const bcol = sieging ? acc(0.95) : knocking ? cy(0.75) : inDanger ? acc(0.92) : inWarn ? acc(0.6) : cy(0.32);
+        // frame — yellow in the DANGER band ("about to siege, seal now"), red
+        // only once it's actually pressing a sealed door.
+        const YEL = "rgba(240,205,60,0.95)";
+        const bcol = sieging ? acc(0.95) : knocking ? cy(0.75) : inDanger ? YEL : inWarn ? acc(0.6) : cy(0.32);
         g.save();
-        if (sieging || inWarn) { g.shadowColor = sieging ? acc(0.9) : acc(inDanger ? 0.85 : 0.5); g.shadowBlur = sieging ? 34 : inDanger ? 30 : 15; }
+        if (sieging || inWarn) {
+          g.shadowColor = sieging ? acc(0.9) : inDanger ? "rgba(240,205,60,0.85)" : acc(0.5);
+          g.shadowBlur = sieging ? 34 : inDanger ? 30 : 15;
+        }
         g.strokeStyle = bcol; g.lineWidth = sieging || inWarn ? 3 : 1.6;
         pathRR(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 6); g.stroke();
         g.restore();
@@ -722,6 +737,7 @@
         if (sieging) { stateTxt = "HELD — don't open"; stateCol = acc(0.6 + Math.sin(anim * 0.02) * 0.4); }
         else if (knocking) { stateTxt = "it's gone · click: open"; stateCol = cy(0.95); }
         else if (closed) { stateTxt = "SEALED"; stateCol = cy(0.75); }
+        else if (inDanger) { stateTxt = "SEAL NOW"; stateCol = "rgba(240,205,60," + (0.7 + Math.sin(anim * 0.02) * 0.3) + ")"; }
         else { stateTxt = "click: seal"; stateCol = inWarn ? acc(0.9) : cy(0.45); }
         g.fillStyle = stateCol;
         g.font = "700 " + Math.round(r.w * (sieging ? 0.07 : 0.072)) + "px system-ui, sans-serif";
@@ -746,7 +762,7 @@
         }
 
         if (inDanger && !closed) {
-          g.fillStyle = acc(0.55 + Math.sin(anim * 0.013) * 0.4);
+          g.fillStyle = "rgba(240,205,60," + (0.55 + Math.sin(anim * 0.013) * 0.4) + ")";
           g.font = "800 " + Math.round(r.w * 0.16) + "px system-ui, sans-serif";
           g.textAlign = "center"; g.textBaseline = "middle";
           g.fillText("!", r.x + r.w / 2, r.y + r.h * 0.42);
