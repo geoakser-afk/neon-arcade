@@ -46,8 +46,24 @@
         const marginX = W * 0.06, top = H * 0.11, gap = W * 0.012;
         const bw = (W - marginX * 2 - gap * (COLS - 1)) / COLS;
         const bh = H * 0.04;
+        // a few UNBREAKABLE blocks appear from level 2+ (the ball bounces off,
+        // can't destroy them); count grows slowly, capped so a level's always clearable.
+        const solidCount = level < 2 ? 0 : Math.min(rows * 2, level - 1 + Math.floor(level / 3));
+        const solidSet = new Set();
+        for (let k = 0; k < solidCount; k++) {
+          // keep them out of the very bottom row so they never block the last brick
+          const rr = Math.floor(Math.random() * Math.max(1, rows - 1));
+          const cc = Math.floor(Math.random() * COLS);
+          solidSet.add(rr + ":" + cc);
+        }
         for (let r = 0; r < rows; r++) {
           for (let cI = 0; cI < COLS; cI++) {
+            if (solidSet.has(r + ":" + cI)) {
+              // unbreakable block — no hp, never counts toward clearing
+              bricks.push({ x: marginX + cI * (bw + gap), y: top + r * (bh + gap),
+                            w: bw, h: bh, row: r, solid: true, alive: true });
+              continue;
+            }
             // tougher bricks toward the top; hp grows slowly with level
             const baseHp = 1 + Math.floor((rows - 1 - r) / 2);
             const hp = Math.min(4, baseHp + (level > 4 ? 1 : 0));
@@ -152,6 +168,12 @@
       }
 
       function hitBrick(b, ball) {
+        if (b.solid) {
+          // unbreakable — just a dull clink + a couple sparks, no score/damage
+          ctx.audio.tone(150, 0.06, { type: "sine", vol: 0.06 });
+          spawnParticles(ball.x, ball.y, "#8a93a8", 3);
+          return;
+        }
         b.hp--;
         combo++;
         comboTimer = 1400;
@@ -275,7 +297,8 @@
         }
 
         // level clear
-        if (!bricks.some(function (b) { return b.alive; })) {
+        // level clears when all BREAKABLE bricks are gone (solids don't count)
+        if (!bricks.some(function (b) { return b.alive && !b.solid; })) {
           level++; flash = 0.8; ctx.audio.score();
           newLevel();
         }
@@ -293,6 +316,18 @@
         for (let i = 0; i < bricks.length; i++) {
           const b = bricks[i];
           if (!b.alive) continue;
+          if (b.solid) {
+            // unbreakable — cold metallic slab with a subtle hatch, no glow
+            g.save();
+            g.fillStyle = "#39414f";
+            roundRect(g, b.x, b.y, b.w, b.h, 3); g.fill();
+            g.strokeStyle = "rgba(160,175,200,0.5)"; g.lineWidth = 1.5;
+            roundRect(g, b.x + 0.75, b.y + 0.75, b.w - 1.5, b.h - 1.5, 3); g.stroke();
+            g.strokeStyle = "rgba(120,135,160,0.35)"; g.lineWidth = 1;
+            g.beginPath(); g.moveTo(b.x + b.w * 0.2, b.y + b.h * 0.75); g.lineTo(b.x + b.w * 0.8, b.y + b.h * 0.25); g.stroke();
+            g.restore();
+            continue;
+          }
           const hue = ROW_HUE[b.row % ROW_HUE.length];
           const strength = 20 + (b.hp / b.maxHp) * 45;
           g.save();
@@ -412,7 +447,7 @@
         g.closePath();
       }
 
-      return {
+      const self = {
         mount(stage, c) {
           ctx = c;
           wrap = document.createElement("div");
@@ -472,6 +507,7 @@
           canvas = g = null;
         }
       };
+      return self;
     }
   });
 })();
