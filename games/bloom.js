@@ -29,6 +29,7 @@
       let accRgb;
       let ringScale;          // current marker-ring size multiplier (randomized per blossom)
       let ringScaleTarget;    // eases toward this so the ring resizes smoothly
+      let best = 0;           // all-time best petal count
 
       // pick a fresh random ring size — big, small, medium, whatever
       function randomRingScale() { return 0.45 + Math.random() * 0.75; }   // 0.45x .. 1.20x
@@ -95,6 +96,8 @@
           hitFlash = 1;
           wilt = Math.max(0, wilt - 0.3);
           ctx.setScore(petals.length);
+          // track the all-time best petal count (persists via per-game storage)
+          if (petals.length > best) { best = petals.length; ctx.storage.recordScore(best); }
           // every blossom re-randomizes the marker-ring radius (big/small/medium)
           ringScaleTarget = randomRingScale();
         } else {
@@ -226,6 +229,19 @@
         g.fill();
         g.restore();
 
+        // petal count + all-time best, centered under the core
+        g.save();
+        g.textAlign = "center";
+        g.fillStyle = rgba(mixWhite(accRgb, 0.6), 0.9);
+        g.font = "800 " + Math.round(Math.min(cssW, cssH) * 0.05) + "px system-ui, sans-serif";
+        g.textBaseline = "middle";
+        g.fillText(String(petals.length), cx, cy);
+        g.fillStyle = rgba(mixWhite(accRgb, 0.4), 0.5);
+        g.font = "600 " + Math.round(Math.min(cssW, cssH) * 0.022) + "px system-ui, sans-serif";
+        g.textBaseline = "top";
+        g.fillText("best " + best, cx, cy + Math.min(cssW, cssH) * 0.035);
+        g.restore();
+
         // gentle "click to bloom" prompt before first petal
         if (!petals.length) {
           g.save();
@@ -265,6 +281,7 @@
 
           resize();
           reset();
+          best = ctx.storage.best();       // load all-time best petal count
           ctx.setScore(0);
           Arcade.input.setPointerTarget(canvas);
           draw();

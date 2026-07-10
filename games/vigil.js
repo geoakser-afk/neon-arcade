@@ -57,14 +57,19 @@
 
       const POWER_MAX = 100;
       const WARN = 0.6, DANGER = 0.84;
-      const CRANK_GAIN = 3.0, CRANK_CD = 150;   // strong charge per wind
-      // Door siege: a wraith that reaches a SEALED door presses against it. The
-      // door locks — you cannot open it. It stays that long, then KNOCKS twice
-      // (a distinct per-side signal) and leaves; only then is the door safe to
-      // open. Opening while it's still pressing = death. If it reaches an OPEN
-      // door it takes you immediately.
-      const SIEGE_MS = 3600;                    // how long it presses before leaving
-      const KNOCK_LOCK_MS = 700;                // brief lock during the leave-knock
+      const CRANK_CD = 150;
+      // Crank gets stronger as the night count rises (weak on night 1 for a chill
+      // start; ~3.0 by night 4 where it feels right; a touch more on night 5+).
+      function crankGain(n) { return 1.7 + n * 0.32; }   // n1≈2.0, n4≈3.0, n5≈3.3
+      // Most Husks are HARMLESS at a sealed door — they bonk and leave, so you can
+      // close then reopen freely. SOME are SIEGE Husks: they lock the sealed door
+      // (can't open until they go) and are marked with a yellow doorway glow.
+      // Sieges are rare early and get more frequent per night (and in endless).
+      function siegeChance(n) { return Math.min(0.8, 0.08 + n * 0.07); } // n1≈.15, n4≈.36, n5≈.43
+      const SIEGE_MS = 3600;                    // how long a siege Husk presses
+      const KNOCK_LOCK_MS = 700;                // brief lock as it leaves
+      // Dual-door attacks (both halls active at once) only start at night 6.
+      function allowDual(n) { return n >= 6; }
 
       function acc(a) { return "rgba(" + AR + "," + AG + "," + AB + "," + a + ")"; }
       function cy(a) { return "rgba(" + CY + "," + a + ")"; }
@@ -80,9 +85,11 @@
       // ---- per-night difficulty (scales forever) ----
       function nightLenMs(n) { return Math.min(120000, 30000 + (n - 1) * 9000); }
       // gap before a wraith next appears — short so sieges happen often
-      function hallDelay(n) { return Math.max(1200, 3800 - n * 320) + Math.random() * 1800; }
-      // travel speed toward the door — a bit faster so the trek isn't slow
-      function hallSpeed(n) { return (1 / Math.max(2000, 4200 - n * 260)) * (0.85 + Math.random() * 0.35); }
+      // gap before the next Husk appears — longer on early nights (calmer pace),
+      // tightening as nights climb so endless gets relentless.
+      function hallDelay(n) { return Math.max(1400, 6800 - n * 360) + Math.random() * (n < 6 ? 3200 : 1800); }
+      // travel speed toward the door — slower on early nights.
+      function hallSpeed(n) { return (1 / Math.max(2200, 6200 - n * 320)) * (0.85 + Math.random() * 0.3); }
       function creepRate(n) { return 1 / Math.max(2400, 5200 - n * 240); }     // prox/ms, monitor up
       const creepRetreat = 1 / 7000;
       function ventFill(n) { return Math.min(11, 3 + n * 0.7); }               // %/s
@@ -91,7 +98,10 @@
       const doorDrain = 1.4, monDrain = 1.7, lightCost = 1.1;
       // Wisp (green, left only): advances toward you; each LEFT flash pushes it
       // back a chunk. Reaches you if it isn't beaten back in time.
-      function wispDelay(n) { return Math.max(3000, 10000 - n * 700) + Math.random() * 4000; }
+      // short delay so the Wisp slots into the quiet gaps between Husks (it fully
+      // backs off if a Husk shows up, so it can't overlap — it just needs to be
+      // eager to appear whenever there's a lull).
+      function wispDelay(n) { return 1600 + Math.random() * 2200; }
       function wispSpeed(n) { return (1 / Math.max(5000, 9000 - n * 500)); }   // prox/ms
       const WISP_FLASH_PUSH = 1.0;                                            // one flash drives it fully off
       // Leech (purple): latches onto the power bar and drains it fast until you
@@ -187,11 +197,12 @@
         power = POWER_MAX; blackout = 0; flicker = 0;
         monitorUp = false; vent = 6; creep = 0;
         doors = { L: { closed: false }, R: { closed: false } };
-        // Husks (red door monsters) work both halls from night 1. First comes
-        // fast (~2-4s) so you meet the siege right away, then they keep coming.
+        // Husks work both halls, but before night 6 only ONE is ever active at a
+        // time (no dual-door attacks) — see the update loop. Start with one hall
+        // armed and the other idle; the arming logic keeps them from overlapping.
         halls = {
-          L: newHall(2600 + Math.random() * 2200),
-          R: newHall(2000 + Math.random() * 1600)
+          L: newHall(3200 + Math.random() * 2600),
+          R: newHall(1800 + Math.random() * 1800)
         };
         lights = { L: { until: -1 }, R: { until: -1 } };
         wisp = newWisp(n); leech = newLeech(n);
@@ -201,9 +212,11 @@
         ctx.setScore(night);
       }
 
-      // siege: 0 = not at door; >0 = pressing against a sealed door (ms elapsed);
-      // knocking = playing the leave-knock (door still locked until it ends).
-      function newHall(delay) { return { active: false, prox: 0, wait: delay, warned: false, retreating: false, siege: 0, knocking: 0 }; }
+      // siege: 0 = not at door; >0 = pressing against a sealed door (ms elapsed).
+      // isSiege: decided when it activates — only siege Husks lock a sealed door
+      // and glow yellow; harmless ones just bonk a sealed door and leave.
+      // knocking = playing the leave animation (door still locked until it ends).
+      function newHall(delay) { return { active: false, prox: 0, wait: delay, warned: false, retreating: false, siege: 0, knocking: 0, isSiege: false }; }
       // Wisp: active=creeping down the left hall; prox 0→1 reaches you. Flashing
       // the left light knocks prox back. wait = delay before it next appears.
       function newWisp(n) { return { active: false, prox: 0, wait: wispDelay(n), pinged: false }; }
@@ -271,7 +284,7 @@
         crank.cd = CRANK_CD;
         crank.angle += Math.PI / 3;
         crank.glow = 1;
-        power = Math.min(POWER_MAX, power + CRANK_GAIN);
+        power = Math.min(POWER_MAX, power + crankGain(night));
         const pitch = 360 + (power / POWER_MAX) * 220;
         ctx.audio.tone(pitch, 0.05, { type: "triangle", vol: 0.05 });
       }
@@ -385,14 +398,27 @@
           else creep = Math.max(0, creep - creepRetreat * dt);
         }
 
-        // ---- hall wraiths ----
+        // ---- hall Husks ----
+        // Is a Husk already engaged (approaching/at a door) on EITHER side? Before
+        // night 6 only one hall may be active at a time — no dual-door attacks.
+        function busyHall() {
+          return ["L", "R"].some(function (s) {
+            const hh = halls[s];
+            return hh.active && (hh.prox > 0.01 || hh.siege > 0);
+          });
+        }
         let maxThreat = creep;
         ["L", "R"].forEach(function (side) {
           const h = halls[side];
           if (h.wait === Infinity) return;
           if (!h.active) {
             h.wait -= dt;
-            if (h.wait <= 0) { h.active = true; h.prox = 0.03; h.warned = false; h.retreating = false; }
+            if (h.wait <= 0) {
+              // don't arm this hall if another Husk is live and dual isn't allowed
+              if (!allowDual(night) && busyHall()) { h.wait = 400; return; }
+              h.active = true; h.prox = 0.03; h.warned = false; h.retreating = false;
+              h.isSiege = Math.random() < siegeChance(night);   // decide its type now
+            }
             return;
           }
           if (h.retreating) {
@@ -400,25 +426,16 @@
             if (h.prox <= 0) halls[side] = newHall(hallDelay(night));
             return;
           }
-          // ---- pressing against a SEALED door (siege) ----
+          // ---- pressing against a SEALED door (siege Husk only) ----
           if (h.siege > 0) {
             maxThreat = 1;
-            // if the player somehow opened, toggleDoor already killed them; here
-            // the door is guaranteed closed. Count down the press.
             if (h.knocking > 0) {
-              // leave-knock playing: door still locked; when it ends, it's gone
               h.knocking -= dt;
               if (h.knocking <= 0) { halls[side] = newHall(hallDelay(night)); }
               return;
             }
             h.siege += dt;
-            if (h.siege >= SIEGE_MS) {
-              // it gives up and leaves. NO knock sound for door wraiths — the
-              // door's red "HELD" glow going calm is the only cue (the crank
-              // noise would mask a sound anyway). Door stays locked through the
-              // brief leave window so you can't open into it as it goes.
-              h.knocking = KNOCK_LOCK_MS;
-            }
+            if (h.siege >= SIEGE_MS) { h.knocking = KNOCK_LOCK_MS; }   // gives up, leaves
             return;
           }
           // ---- approaching ----
@@ -429,11 +446,16 @@
           }
           if (h.prox >= 1) {
             if (doors[side].closed) {
-              // reaches a sealed door → begins pressing; door is now LOCKED.
-              // No arrival knock — the red door glow is the cue.
-              h.prox = 1; h.siege = 0.0001;
+              if (h.isSiege) {
+                // siege Husk → locks the sealed door (yellow glow, can't open)
+                h.prox = 1; h.siege = 0.0001;
+              } else {
+                // harmless Husk → just bonks the sealed door and leaves. You could
+                // have closed→reopened around it freely.
+                h.retreating = true;
+              }
             } else {
-              // reaches an OPEN door → takes you at once
+              // reaches an OPEN door → takes you at once (either type)
               breach(side === "L" ? "hallL" : "hallR"); return;
             }
           }
@@ -447,15 +469,20 @@
         // Leech latched) before it appears, and if it's already creeping it holds
         // still while another threat is live. ----
         if (has("wisp")) {
+          // The Wisp only yields to a Husk that's actually CLOSE (past the warn
+          // line) or mid-siege — not to one that just spawned far down the hall.
+          // That gives it real windows to appear without ever sharing the screen
+          // with an imminent Husk threat.
           const othersBusy =
-            (halls.L.active && !halls.L.retreating) || halls.L.siege > 0 ||
-            (halls.R.active && !halls.R.retreating) || halls.R.siege > 0 ||
+            (halls.L.active && !halls.L.retreating && halls.L.prox >= WARN) || halls.L.siege > 0 ||
+            (halls.R.active && !halls.R.retreating && halls.R.prox >= WARN) || halls.R.siege > 0 ||
             (has("stalker") && creep > 0.05) ||
             (has("leech") && leech.latched);
           if (othersBusy) {
             // another monster is live — the Wisp fully backs off and disappears
-            // (never on screen alongside a Husk). It'll return in a quiet moment.
-            if (wisp.active) wisp = newWisp(night);
+            // (never on screen alongside a Husk). It returns SOON once things calm
+            // (short retry, so it isn't perpetually starved by frequent Husks).
+            if (wisp.active) { wisp = newWisp(night); wisp.wait = 1500 + Math.random() * 1500; }
           } else if (!wisp.active) {
             wisp.wait -= dt;
             if (wisp.wait <= 0) { wisp.active = true; wisp.prox = 0.05; wisp.pinged = false; wispCue(); }
@@ -678,15 +705,17 @@
           g.fillStyle = "rgba(2,5,7," + (0.4 + threat * 0.35) + ")";
           g.beginPath(); g.arc(cxp, cyp, rad * 0.32, 0, Math.PI * 2); g.fill();
 
-          // Siege-Husk tell: the doorway washes yellow for the WHOLE time a Husk
-          // is approaching this door (from the moment it spawns), intensifying as
-          // it nears — so you always know which door has a Husk coming.
-          const yp = reduced ? 1 : 0.6 + Math.abs(Math.sin(anim * 0.012)) * 0.4;
-          const yi = 0.12 + threat * 0.24;                 // ramps up as it nears
-          const yg = g.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
-          yg.addColorStop(0, "rgba(240,210,70," + (yi * yp) + ")");
-          yg.addColorStop(1, "rgba(240,190,50," + (yi * 0.35 * yp) + ")");
-          g.fillStyle = yg; g.fillRect(r.x, r.y, r.w, r.h);
+          // SIEGE tell: only a siege Husk washes the doorway yellow (from spawn,
+          // intensifying as it nears). A normal Husk stays red — you can safely
+          // close/reopen around it, so no yellow warning.
+          if (h.isSiege) {
+            const yp = reduced ? 1 : 0.6 + Math.abs(Math.sin(anim * 0.012)) * 0.4;
+            const yi = 0.14 + threat * 0.26;
+            const yg = g.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
+            yg.addColorStop(0, "rgba(240,210,70," + (yi * yp) + ")");
+            yg.addColorStop(1, "rgba(240,190,50," + (yi * 0.35 * yp) + ")");
+            g.fillStyle = yg; g.fillRect(r.x, r.y, r.w, r.h);
+          }
         }
 
         const sieging = h.siege > 0 && h.knocking <= 0;   // pressing: DON'T open
