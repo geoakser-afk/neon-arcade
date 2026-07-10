@@ -36,7 +36,7 @@
         1: ["Husks & the crank", "HUSKS (red) creep the halls to your doors — seal a door before one arrives. If a Husk presses a sealed door, DON'T open (the door glows red 'HELD') until it leaves. Meanwhile POWER drains: wind the CRANK in the middle to keep it up."],
         2: ["The vents", "Raise the monitor to flush the vent before it overflows."],
         3: ["The Stalker", "The STALKER (red) stirs in the vent — it only creeps toward you while you watch the cam, so don't linger on the monitor."],
-        4: ["The Wisp", "The WISP (green, barely visible) comes ONLY down the LEFT hall. Sealing won't stop it — flash the LEFT light again and again to drive it back before it reaches you."],
+        4: ["The Wisp", "The WISP (green, barely visible) comes ONLY down the LEFT hall, and only when nothing else is attacking. Sealing won't stop it — one FLASH of the LEFT light drives it away. Just don't let it reach you first."],
         5: ["The Leech", "The LEECH (purple) latches onto your power bar and drains it fast. Click the leech to knock it off — it'll keep coming back."]
       };
 
@@ -57,7 +57,7 @@
 
       const POWER_MAX = 100;
       const WARN = 0.6, DANGER = 0.84;
-      const CRANK_GAIN = 1.0, CRANK_CD = 150;   // small charge per wind — keep winding
+      const CRANK_GAIN = 3.0, CRANK_CD = 150;   // strong charge per wind
       // Door siege: a wraith that reaches a SEALED door presses against it. The
       // door locks — you cannot open it. It stays that long, then KNOCKS twice
       // (a distinct per-side signal) and leaves; only then is the door safe to
@@ -93,7 +93,7 @@
       // back a chunk. Reaches you if it isn't beaten back in time.
       function wispDelay(n) { return Math.max(3000, 10000 - n * 700) + Math.random() * 4000; }
       function wispSpeed(n) { return (1 / Math.max(5000, 9000 - n * 500)); }   // prox/ms
-      const WISP_FLASH_PUSH = 0.24;                                           // prox knocked back per flash
+      const WISP_FLASH_PUSH = 1.0;                                            // one flash drives it fully off
       // Leech (purple): latches onto the power bar and drains it fast until you
       // click it off; then it lurks and re-latches after a delay.
       function leechDelay(n) { return Math.max(4000, 11000 - n * 700) + Math.random() * 5000; }
@@ -444,14 +444,23 @@
         });
         if (over) return;
 
-        // ---- Wisp (night 4+): green, LEFT hall only. Creeps in; sealing does
-        // nothing — you FLASH the left light to shove it back. Reaches you if you
-        // don't beat it back in time. ----
+        // ---- Wisp (night 4+): green, LEFT hall only. One FLASH of the left light
+        // drives it fully off. It NEVER overlaps another active threat — it waits
+        // for a quiet moment (no Husk approaching/sieging, no Stalker on cam, no
+        // Leech latched) before it appears, and if it's already creeping it holds
+        // still while another threat is live. ----
         if (has("wisp")) {
+          const othersBusy =
+            (halls.L.active && !halls.L.retreating) || halls.L.siege > 0 ||
+            (halls.R.active && !halls.R.retreating) || halls.R.siege > 0 ||
+            (has("stalker") && creep > 0.05) ||
+            (has("leech") && leech.latched);
           if (!wisp.active) {
-            wisp.wait -= dt;
-            if (wisp.wait <= 0) { wisp.active = true; wisp.prox = 0.05; wisp.pinged = false; wispCue(); }
-          } else {
+            if (!othersBusy) {
+              wisp.wait -= dt;
+              if (wisp.wait <= 0) { wisp.active = true; wisp.prox = 0.05; wisp.pinged = false; wispCue(); }
+            }
+          } else if (!othersBusy) {
             wisp.prox += wispSpeed(night) * dt;
             if (!wisp.pinged && wisp.prox >= 0.45) { wisp.pinged = true; wispCue(); }
             if (wisp.prox >= 1) { breach("wisp"); return; }
