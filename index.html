@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Neon Arcade</title>
+<link rel="stylesheet" href="shell/theme.css">
+</head>
+<body>
+<div id="ambient"><span></span><span></span><span></span></div>
+<div id="app"></div>
+
+<!-- Shell (order matters: storage -> audio -> the rest -> shell last) -->
+<script src="shell/storage.js"></script>
+<script src="shell/audio.js"></script>
+<script src="shell/registry.js"></script>
+<script src="shell/board.js"></script>
+<script src="shell/input.js"></script>
+<script src="shell/ui.js"></script>
+<script src="shell/timer.js"></script>
+<script src="shell/music.js"></script>
+
+<!-- Games (each self-registers). Order = hub order. -->
+<script src="games/g2048.js"></script>
+<script src="games/lumen.js"></script>
+<script src="games/deepfield.js"></script>
+<script src="games/refract.js"></script>
+<script src="games/stack.js"></script>
+<script src="games/glide.js"></script>
+<script src="games/echoes.js"></script>
+<script src="games/blackout.js"></script>
+<script src="games/cascade.js"></script>
+<script src="games/nightwatch.js"></script>
+<script src="games/vigil.js"></script>
+<script src="games/ripple.js"></script>
+<script src="games/constellation.js"></script>
+<script src="games/orbit.js"></script>
+<script src="games/bloom.js"></script>
+
+<!-- Shell boot must run after games register -->
+<script src="shell/shell.js"></script>
+</body>
+</html>
