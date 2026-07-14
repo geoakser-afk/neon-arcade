@@ -1,11 +1,12 @@
-/* Glide — Flappy Bird, neon-styled. Tap to flap a little bird between green
-   pipes; snappy gravity, tight gaps, a scrolling ground, big center score.
-   One button. Keeps the calm-neon coat but plays like the real thing. */
+/* Glide — Flappy Bird, fully neon. Tap to flap a glowing triangle mote (with
+   a wave-dash trail) between soft neon-blue pipes. No grass, no green. Gaps are
+   always big enough AND always reachable from the last one, and the mote has a
+   small forgiving hitbox so near-misses don't kill. One button. */
 (function () {
   Arcade.register({
     id: "glide",
     name: "Glide",
-    tagline: "Flap between the pipes. One tap, don't drop.",
+    tagline: "Flap the mote through the neon gates.",
     accent: "#6bb8f0",
     complexity: "low",
     controls: "click",
@@ -15,25 +16,23 @@
       let cssW = 0, cssH = 0, dpr = 1;
       let reduced = false;
 
-      let started, over, pipes, score, spawnTimer, groundX, flapAnim, best;
-      let bird;   // { y, vy }
+      let started, over, pipes, score, spawnTimer, flapAnim, best, trail, lastGapY;
+      let mote;   // { y, vy }
 
-      // physics tuned to REF height so it feels the same at any canvas size
       const REF = 560;
-      const GRAV = 0.0022;     // px/ms^2 at ref — snappy flappy-bird fall
-      const FLAP = -0.72;      // px/ms impulse at ref — a firm hop
-      const SPEED = 0.20;      // px/ms scroll at ref
-      const GAP = 0.30;        // gap as fraction of playfield height (tight-ish)
-      const PIPE_W = 0.15;     // pipe width as fraction of width
-      const SPACING = 1500;    // ms between pipes
-      const GROUND = 0.12;     // ground height fraction
+      const GRAV = 0.0021;     // px/ms^2 at ref
+      const FLAP = -0.70;      // px/ms hop at ref
+      const SPEED = 0.19;      // px/ms scroll at ref
+      const GAP = 0.34;        // gap as fraction of height — comfortably clears the mote
+      const PIPE_W = 0.14;     // pipe width fraction
+      const SPACING = 1600;    // ms between pipes
+      const REACH = 0.30;      // max gap-center shift between consecutive pipes (fraction of H)
 
-      function u() { return cssH / REF; }                 // motion scale
-      function playH() { return cssH * (1 - GROUND); }    // area above the ground
+      function u() { return cssH / REF; }
 
       function resize() {
-        const size = Arcade.board.stageSize(760, 0.62);   // portrait-ish, flappy is tall
-        cssW = Math.round(size * 0.72);
+        const size = Arcade.board.stageSize(760, 0.62);
+        cssW = Math.round(size * 0.74);
         cssH = Math.round(size);
         dpr = window.devicePixelRatio || 1;
         canvas.style.width = cssW + "px";
@@ -45,23 +44,31 @@
 
       function reset() {
         started = false; over = false;
-        pipes = []; score = 0; spawnTimer = 0; groundX = 0; flapAnim = 0;
-        bird = { y: cssH * 0.42, vy: 0 };
+        pipes = []; score = 0; spawnTimer = 0; flapAnim = 0; trail = [];
+        mote = { y: cssH * 0.42, vy: 0 };
+        lastGapY = cssH * 0.42;
       }
 
       function spawnPipe() {
-        const gap = playH() * GAP;
-        const margin = cssH * 0.08;
-        const cy = margin + gap / 2 + Math.random() * (playH() - gap - margin * 2);
-        pipes.push({ x: cssW + cssW * 0.1, gapY: cy, gap: gap, w: cssW * PIPE_W, scored: false });
+        const gap = cssH * GAP;
+        const margin = cssH * 0.09;
+        const lo = margin + gap / 2;                 // highest a gap-center can sit
+        const hi = cssH - margin - gap / 2;          // lowest
+        // pick a reachable center: within REACH of the previous gap, then clamp to bounds
+        const reach = cssH * REACH;
+        let cy = lastGapY + (Math.random() * 2 - 1) * reach;
+        cy = Math.max(lo, Math.min(hi, cy));
+        lastGapY = cy;
+        pipes.push({ x: cssW + cssW * 0.12, gapY: cy, gap: gap, w: cssW * PIPE_W, scored: false });
       }
 
       function flap() {
         if (over) return;
         if (!started) { started = true; spawnPipe(); }
-        bird.vy = FLAP * u();
+        mote.vy = FLAP * u();
         flapAnim = 1;
-        ctx.audio.tone(560, 0.08, { type: "square", vol: 0.06, glide: 360 }); // chirpy hop
+        ctx.audio.tone(560, 0.12, { type: "sine", vol: 0.07, glide: 250 });
+        trail.push({ x: cssW * 0.3, y: mote.y, a: 1 });
       }
 
       function end() {
@@ -70,129 +77,121 @@
         ctx.audio.lose();
         if (score > best) { best = score; ctx.storage.recordScore(best); }
         ctx.onGameOver(score, {
-          title: "Down it goes.",
+          title: "Clipped it.",
           msg: "Score: " + score + (score >= best && score > 0 ? "  — new best!" : "  ·  best " + best)
         });
       }
 
       function update(dt) {
         if (flapAnim > 0) flapAnim = Math.max(0, flapAnim - dt * 0.006);
-        // ground scrolls even before start (idle bob)
-        groundX = (groundX - SPEED * u() * dt) % (cssW * 0.1);
+
+        // trail always fades
+        for (const t of trail) t.a -= dt * 0.004;
+        while (trail.length && trail[0].a <= 0) trail.shift();
+
         if (!started || over) return;
 
-        bird.vy += GRAV * u() * dt;
-        bird.y += bird.vy * dt;
+        mote.vy += GRAV * u() * dt;
+        mote.y += mote.vy * dt;
+
+        trail.push({ x: cssW * 0.3, y: mote.y, a: 1 });
+        if (trail.length > 26) trail.shift();
 
         spawnTimer -= dt;
         if (spawnTimer <= 0) { spawnPipe(); spawnTimer = SPACING; }
 
-        const r = cssW * 0.05;                 // bird radius (hitbox a touch smaller)
-        const hit = r * 0.82;
+        // SMALL forgiving hitbox — a circle much tighter than the drawn mote
+        const bx = cssW * 0.3;
+        const hit = cssW * 0.024;
         const step = SPEED * u() * dt;
-        const bx = cssW * 0.3;                  // bird's fixed x
         for (const p of pipes) {
           p.x -= step;
           if (!p.scored && p.x + p.w < bx - hit) {
             p.scored = true; score++; ctx.setScore(score);
             ctx.audio.pick();
           }
-          // collision with either pipe
           if (bx + hit > p.x && bx - hit < p.x + p.w) {
             const top = p.gapY - p.gap / 2, bot = p.gapY + p.gap / 2;
-            if (bird.y - hit < top || bird.y + hit > bot) { end(); return; }
+            if (mote.y - hit < top || mote.y + hit > bot) { end(); return; }
           }
         }
         while (pipes.length && pipes[0].x + pipes[0].w < -cssW * 0.2) pipes.shift();
 
-        // ground + ceiling
-        if (bird.y + hit > playH()) { bird.y = playH() - hit; end(); return; }
-        if (bird.y - hit < 0) { bird.y = hit; bird.vy = 0; }
+        // top/bottom of the play area (no ground)
+        if (mote.y + hit > cssH) { mote.y = cssH - hit; end(); return; }
+        if (mote.y - hit < 0) { mote.y = hit; mote.vy = 0; }
       }
 
-      function drawPipe(x, w, top, bot) {
-        // neon-green pipe pair (classic flappy green, glowing)
-        const green = "107,224,140";
+      function drawPipe(p) {
+        const top = p.gapY - p.gap / 2, bot = p.gapY + p.gap / 2;
+        const acc = "107,184,240";                    // neon blue
         g.save();
-        g.shadowColor = "rgba(" + green + ",0.5)"; g.shadowBlur = 14;
-        g.fillStyle = "rgba(" + green + ",0.16)";
-        g.strokeStyle = "rgba(" + green + ",0.7)"; g.lineWidth = 2.5;
-        // top pipe (from 0 to `top`) with a lip
-        pipeBody(x, 0, w, top);
-        // bottom pipe (from `bot` to ground)
-        pipeBody(x, bot, w, playH() - bot);
+        g.shadowColor = "rgba(" + acc + ",0.55)"; g.shadowBlur = 16;
+        g.fillStyle = "rgba(" + acc + ",0.14)";
+        g.strokeStyle = "rgba(" + acc + ",0.65)"; g.lineWidth = 2.5;
+        pipeBody(p.x, 0, p.w, top, true);             // top pipe → down to `top`
+        pipeBody(p.x, bot, p.w, cssH - bot, false);   // bottom pipe → down to floor
         g.restore();
       }
-      function pipeBody(x, y, w, h) {
+      function pipeBody(x, y, w, h, isTop) {
         if (h <= 0) return;
-        const lipH = Math.min(cssH * 0.03, h);
-        const lipOut = cssW * 0.02;
-        // shaft
-        g.beginPath(); g.rect(x, y, w, h); g.fill(); g.stroke();
-        // lip at the mouth end (nearest the gap)
-        if (y === 0) { // top pipe → lip at bottom
-          g.beginPath(); g.rect(x - lipOut, y + h - lipH, w + lipOut * 2, lipH); g.fill(); g.stroke();
-        } else {        // bottom pipe → lip at top
-          g.beginPath(); g.rect(x - lipOut, y, w + lipOut * 2, lipH); g.fill(); g.stroke();
-        }
+        const r = Math.min(w * 0.28, 10);
+        const lipH = Math.min(cssH * 0.028, h);
+        const lipOut = cssW * 0.022;
+        // shaft (rounded on the gap end)
+        roundRect(x, y, w, h, r);
+        // lip at the mouth
+        if (isTop) roundRect(x - lipOut, y + h - lipH, w + lipOut * 2, lipH, r);
+        else roundRect(x - lipOut, y, w + lipOut * 2, lipH, r);
       }
 
       function draw() {
         g.clearRect(0, 0, cssW, cssH);
-        // sky
+        // neon sky wash
         const sky = g.createLinearGradient(0, 0, 0, cssH);
-        sky.addColorStop(0, "rgba(107,184,240,0.06)");
-        sky.addColorStop(1, "rgba(107,184,240,0.015)");
+        sky.addColorStop(0, "rgba(107,184,240,0.07)");
+        sky.addColorStop(0.5, "rgba(107,184,240,0.02)");
+        sky.addColorStop(1, "rgba(107,184,240,0.07)");
         g.fillStyle = sky; g.fillRect(0, 0, cssW, cssH);
 
-        for (const p of pipes) drawPipe(p.x, p.w, p.gapY - p.gap / 2, p.gapY + p.gap / 2);
+        for (const p of pipes) drawPipe(p);
 
-        // ground (scrolling neon strip)
-        const gyTop = playH();
-        g.save();
-        g.fillStyle = "rgba(90,120,80,0.25)";
-        g.fillRect(0, gyTop, cssW, cssH - gyTop);
-        g.strokeStyle = "rgba(107,224,140,0.6)"; g.lineWidth = 2;
-        g.beginPath(); g.moveTo(0, gyTop); g.lineTo(cssW, gyTop); g.stroke();
-        g.strokeStyle = "rgba(107,224,140,0.25)"; g.lineWidth = 1.5;
-        for (let x = groundX; x < cssW; x += cssW * 0.1) {
-          g.beginPath(); g.moveTo(x, gyTop); g.lineTo(x - cssW * 0.05, cssH); g.stroke();
+        // wave-dash trail
+        for (const t of trail) {
+          if (t.a <= 0) continue;
+          g.globalAlpha = t.a * 0.5;
+          g.fillStyle = "rgba(150,205,250,0.85)";
+          g.beginPath(); g.arc(t.x, t.y, cssW * 0.013, 0, Math.PI * 2); g.fill();
         }
-        g.restore();
+        g.globalAlpha = 1;
 
-        // bird
-        const r = cssW * 0.05;
+        // the mote — glowing triangle pointing right, tilted by velocity
+        const r = cssW * 0.03;
         const bx = cssW * 0.3;
-        const tilt = Math.max(-0.5, Math.min(0.9, bird.vy * 1.1 - flapAnim * 0.6));
+        const tilt = Math.max(-0.5, Math.min(0.8, mote.vy * 1.0 - flapAnim * 0.5));
         g.save();
-        g.translate(bx, bird.y);
+        g.translate(bx, mote.y);
         g.rotate(tilt);
-        g.shadowColor = "rgba(255,215,90,0.85)"; g.shadowBlur = 18;
-        // body
-        g.fillStyle = "#ffd75a";
-        g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
-        // wing (flaps on hop)
-        g.fillStyle = "#f0b93a";
+        g.shadowColor = "rgba(150,205,250,0.95)"; g.shadowBlur = 22;
+        g.fillStyle = "#cfe8fb";
         g.beginPath();
-        g.ellipse(-r * 0.2, r * 0.1 - flapAnim * r * 0.5, r * 0.55, r * 0.32, -0.3, 0, Math.PI * 2);
+        g.moveTo(r, 0);
+        g.lineTo(-r * 0.75, -r * 0.7);
+        g.lineTo(-r * 0.4, 0);
+        g.lineTo(-r * 0.75, r * 0.7);
+        g.closePath();
         g.fill();
-        // eye + beak
-        g.shadowBlur = 0;
-        g.fillStyle = "#fff"; g.beginPath(); g.arc(r * 0.35, -r * 0.3, r * 0.28, 0, Math.PI * 2); g.fill();
-        g.fillStyle = "#222"; g.beginPath(); g.arc(r * 0.45, -r * 0.3, r * 0.13, 0, Math.PI * 2); g.fill();
-        g.fillStyle = "#ff9e3d";
-        g.beginPath(); g.moveTo(r * 0.7, 0); g.lineTo(r * 1.25, -r * 0.12); g.lineTo(r * 1.25, r * 0.12); g.closePath(); g.fill();
         g.restore();
 
-        // big center score while playing
+        // big center score
         if (started && !over) {
           g.save();
-          g.fillStyle = "rgba(255,255,255,0.92)";
-          g.strokeStyle = "rgba(0,0,0,0.4)"; g.lineWidth = cssW * 0.012;
+          g.fillStyle = "rgba(230,240,255,0.95)";
+          g.strokeStyle = "rgba(0,0,0,0.35)"; g.lineWidth = cssW * 0.012;
           g.font = "800 " + Math.round(cssW * 0.16) + "px system-ui, sans-serif";
           g.textAlign = "center"; g.textBaseline = "middle";
-          g.strokeText(String(score), cssW / 2, cssH * 0.16);
-          g.fillText(String(score), cssW / 2, cssH * 0.16);
+          g.strokeText(String(score), cssW / 2, cssH * 0.15);
+          g.fillText(String(score), cssW / 2, cssH * 0.15);
           g.restore();
         }
 
@@ -203,15 +202,30 @@
           g.fillStyle = "rgba(190,226,251,0.95)";
           g.font = "700 " + Math.round(cssW * 0.06) + "px system-ui, sans-serif";
           g.textAlign = "center";
-          g.fillText("tap to flap", cssW / 2, cssH * 0.5);
-          g.font = "500 " + Math.round(cssW * 0.035) + "px system-ui, sans-serif";
-          g.fillStyle = "rgba(190,226,251,0.6)";
-          if (best > 0) g.fillText("best " + best, cssW / 2, cssH * 0.5 + cssW * 0.08);
+          g.fillText("tap to flap", cssW / 2, cssH * 0.52);
+          if (best > 0) {
+            g.font = "500 " + Math.round(cssW * 0.035) + "px system-ui, sans-serif";
+            g.fillStyle = "rgba(190,226,251,0.6)";
+            g.fillText("best " + best, cssW / 2, cssH * 0.52 + cssW * 0.08);
+          }
           g.restore();
         }
       }
 
-      return {
+      function roundRect(x, y, w, h, rr) {
+        if (w <= 0 || h <= 0) return;
+        rr = Math.min(rr, w / 2, h / 2);
+        g.beginPath();
+        g.moveTo(x + rr, y);
+        g.arcTo(x + w, y, x + w, y + h, rr);
+        g.arcTo(x + w, y + h, x, y + h, rr);
+        g.arcTo(x, y + h, x, y, rr);
+        g.arcTo(x, y, x + w, y, rr);
+        g.closePath();
+        g.fill(); g.stroke();
+      }
+
+      const self = {
         mount(stage, c) {
           stageEl = stage; ctx = c;
           reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -226,7 +240,7 @@
           wrap.appendChild(canvas);
           const hint = document.createElement("div");
           hint.className = "hint";
-          hint.textContent = "Click or space to flap · thread the pipes";
+          hint.textContent = "Click or space to flap · thread the neon gates";
           wrap.appendChild(hint);
           stage.appendChild(wrap);
 
@@ -247,9 +261,10 @@
           if (unResize) unResize();
           unResize = null;
           stageEl = ctx = canvas = g = null;
-          pipes = bird = null;
+          pipes = mote = trail = null;
         }
       };
+      return self;
     }
   });
 })();
