@@ -43,6 +43,7 @@
       // ---- state ----
       let night, phase, phaseT;        // phase: "select" | "intro" | "play" | "clear"
       let maxUnlocked = 1;             // highest night reached (persisted)
+      let selectPage = "main";         // "main" (1-5 + 6+ btn) | "endless" (6..maxUnlocked)
       let anim;                        // ever-running clock for animations
       let nightTime, nightLen;         // night countdown (survive to nightLen)
       let over, ended;
@@ -148,29 +149,38 @@
         return { x: p.x + p.w - s * 0.9, y: p.y + p.h / 2 - s / 2, w: s, h: s };
       }
 
-      // Night-select tiles: show every night up to maxUnlocked (+1 preview locked).
-      // Returns [{ n, rect, locked }] laid out in a centered wrapping grid.
-      function nightTiles() {
+      // lay a list of items (each gets an {n} label, or n===0 for the "6+" button)
+      // into a centered wrapping grid. Returns [{ n, rect }].
+      function layoutTiles(nums, y0) {
         const S = cssS;
-        const count = Math.max(1, maxUnlocked);
-        const cols = Math.min(5, count);
+        const cols = Math.min(5, nums.length);
         const tw = S * 0.15, th = S * 0.15, gap = S * 0.03;
-        const rows = Math.ceil(count / cols);
-        const gridW = cols * tw + (cols - 1) * gap;
-        const x0 = (S - gridW) / 2, y0 = S * 0.42;
         const tiles = [];
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < nums.length; i++) {
           const r = Math.floor(i / cols), c = i % cols;
-          const rowCount = Math.min(cols, count - r * cols);
+          const rowCount = Math.min(cols, nums.length - r * cols);
           const rowW = rowCount * tw + (rowCount - 1) * gap;
           const rx = (S - rowW) / 2;
-          tiles.push({
-            n: i + 1,
-            rect: { x: rx + c * (tw + gap), y: y0 + r * (th + gap), w: tw, h: th },
-            locked: false
-          });
+          tiles.push({ n: nums[i], rect: { x: rx + c * (tw + gap), y: y0 + r * (th + gap), w: tw, h: th } });
         }
         return tiles;
+      }
+
+      // The tiles for the current select page.
+      // main:  nights 1..min(5,maxUnlocked), plus a "6+" button (n=0) if 6 is unlocked.
+      // endless: nights 6..maxUnlocked, plus a "‹ back" button (n=-1).
+      function nightTiles() {
+        if (selectPage === "endless") {
+          const nums = [];
+          for (let k = 6; k <= maxUnlocked; k++) nums.push(k);
+          nums.push(-1);                          // back button
+          return layoutTiles(nums, cssS * 0.4);
+        }
+        const nums = [];
+        const top = Math.min(5, Math.max(1, maxUnlocked));
+        for (let k = 1; k <= top; k++) nums.push(k);
+        if (maxUnlocked >= 6) nums.push(0);        // "6+" button
+        return layoutTiles(nums, cssS * 0.42);
       }
 
       function reset() {
@@ -178,7 +188,7 @@
         anim = 0;
         // highest night ever reached (persisted) gates which nights you can jump to
         maxUnlocked = Math.max(1, ctx.storage.get("maxNight", 1));
-        phase = "select"; phaseT = 0;
+        phase = "select"; phaseT = 0; selectPage = "main";
         over = false;
         // draw needs these defined even on the select screen
         power = POWER_MAX; blackout = 0; flicker = 0; monitorUp = false; vent = 6; creep = 0;
@@ -1039,30 +1049,46 @@
         g.fillText("VIGIL", S / 2, S * 0.2);
         g.fillStyle = cy(0.8);
         g.font = "700 " + Math.round(S * 0.032) + "px system-ui, sans-serif";
-        g.fillText("Pick a night to start", S / 2, S * 0.29);
+        g.fillText(selectPage === "endless" ? "Endless — pick any night you've reached" : "Pick a night to start", S / 2, S * 0.29);
         g.fillStyle = cy(0.45);
         g.font = "500 " + Math.round(S * 0.024) + "px system-ui, sans-serif";
         g.fillText(maxUnlocked > 1 ? ("Reached: Night " + maxUnlocked) : "Start at Night 1 — clear it to unlock the next", S / 2, S * 0.345);
 
         nightTiles().forEach(function (t) {
           const r = t.rect;
+          const special = t.n <= 0;                 // 0 = "6+", -1 = back
           g.save();
           pathRR(r.x, r.y, r.w, r.h, 12);
-          g.fillStyle = "rgba(14,22,28,0.95)";
+          g.fillStyle = special ? "rgba(20,16,26,0.95)" : "rgba(14,22,28,0.95)";
           g.fill();
-          g.shadowColor = cy(0.4); g.shadowBlur = 10;
-          g.strokeStyle = cy(0.5); g.lineWidth = 2;
+          g.shadowColor = special ? acc(0.5) : cy(0.4); g.shadowBlur = 10;
+          g.strokeStyle = special ? acc(0.6) : cy(0.5); g.lineWidth = 2;
           pathRR(r.x, r.y, r.w, r.h, 12); g.stroke();
           g.restore();
-          g.fillStyle = cy(0.95);
-          g.font = "800 " + Math.round(r.h * 0.42) + "px system-ui, sans-serif";
           g.textAlign = "center"; g.textBaseline = "middle";
-          g.fillText(String(t.n), r.x + r.w / 2, r.y + r.h * 0.42);
-          // feature label for the first five nights
-          const feat = { 1: "husks + crank", 2: "vents", 3: "stalker", 4: "wisp", 5: "leech" }[t.n] || "all live";
-          g.fillStyle = cy(0.55);
-          g.font = "600 " + Math.round(r.h * 0.13) + "px system-ui, sans-serif";
-          g.fillText(feat, r.x + r.w / 2, r.y + r.h * 0.78);
+          if (t.n === 0) {                          // "6+" button
+            g.fillStyle = acc(0.95);
+            g.font = "800 " + Math.round(r.h * 0.34) + "px system-ui, sans-serif";
+            g.fillText("6+", r.x + r.w / 2, r.y + r.h * 0.42);
+            g.fillStyle = acc(0.6);
+            g.font = "600 " + Math.round(r.h * 0.12) + "px system-ui, sans-serif";
+            g.fillText("endless", r.x + r.w / 2, r.y + r.h * 0.78);
+          } else if (t.n === -1) {                  // back button
+            g.fillStyle = cy(0.9);
+            g.font = "800 " + Math.round(r.h * 0.3) + "px system-ui, sans-serif";
+            g.fillText("‹", r.x + r.w / 2, r.y + r.h * 0.4);
+            g.fillStyle = cy(0.55);
+            g.font = "600 " + Math.round(r.h * 0.12) + "px system-ui, sans-serif";
+            g.fillText("back", r.x + r.w / 2, r.y + r.h * 0.78);
+          } else {
+            g.fillStyle = cy(0.95);
+            g.font = "800 " + Math.round(r.h * 0.42) + "px system-ui, sans-serif";
+            g.fillText(String(t.n), r.x + r.w / 2, r.y + r.h * 0.42);
+            const feat = { 1: "husks + crank", 2: "vents", 3: "stalker", 4: "wisp", 5: "leech" }[t.n] || "all live";
+            g.fillStyle = cy(0.55);
+            g.font = "600 " + Math.round(r.h * 0.13) + "px system-ui, sans-serif";
+            g.fillText(feat, r.x + r.w / 2, r.y + r.h * 0.78);
+          }
         });
       }
 
@@ -1126,7 +1152,11 @@
           if (intent.type !== "point" || intent.phase !== "down" || intent.button !== 0) return;
           if (phase === "select") {
             const hit = nightTiles().find(function (t) { return inRect(t.rect, intent.x, intent.y); });
-            if (hit) { ctx.audio.tone(300, 0.16, { type: "sine", vol: 0.07, glide: 220 }); startNight(hit.n); }
+            if (!hit) return;
+            ctx.audio.tone(300, 0.16, { type: "sine", vol: 0.07, glide: 220 });
+            if (hit.n === 0) { selectPage = "endless"; }        // open 6+ picker
+            else if (hit.n === -1) { selectPage = "main"; }     // back to 1-5
+            else startNight(hit.n);
             return;
           }
           if (phase === "intro") { beginPlay(); return; }
