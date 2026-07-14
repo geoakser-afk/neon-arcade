@@ -8,18 +8,19 @@
   function onResize(cb) { listeners.add(cb); return () => listeners.delete(cb); }
   function clear() { listeners.clear(); }
 
-  /* Ideal square play size in CSS px. Tuned to fill big / ultrawide screens
-     (was capped tiny at 560). Height is the binding constraint on 21:9, so we
-     lean on it. `max` lets a game raise/lower its own ceiling. `wideBias`
-     (0..1) lets wide-friendly games use more width. */
+  /* Ideal square play size in CSS px. On desktop/ultrawide it stays modest and
+     height-bound; on a narrow/portrait PHONE it uses almost the full width so
+     boards aren't tiny. `max` = game's ceiling; `wideBias` = desktop width use. */
   function stageSize(max, wideBias) {
     max = max || 940;
+    const w = window.innerWidth, h = window.innerHeight;
+    const portrait = w < 720;                 // phone / narrow window
+    if (portrait) {
+      // fill the width (minus a small margin), capped by most of the height
+      return Math.floor(Math.min(w * 0.94, h * 0.7, Math.max(max, 560)));
+    }
     const wf = wideBias == null ? 0.62 : wideBias;
-    return Math.floor(Math.min(
-      window.innerWidth * wf,
-      window.innerHeight * 0.84,
-      max
-    ));
+    return Math.floor(Math.min(w * wf, h * 0.84, max));
   }
 
   window.addEventListener("resize", () => {

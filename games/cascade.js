@@ -130,6 +130,16 @@
         ctx.audio.move();
       }
 
+      function steer(d) {
+        if (over || paused || !cur) return;
+        if (d === "left") tryMove(-1);
+        else if (d === "right") tryMove(1);
+        else if (d === "down") {
+          // soft-drop lives on THIS tile only; a fresh tile can't inherit it
+          cur.softUntil = clock + SOFT_WINDOW;
+        }
+      }
+
       function addEffect(type, r, c) {
         if (reduce) return;
         effects.push({ type: type, r: r, c: c, born: clock });
@@ -294,16 +304,10 @@
           sizeCanvas();
           reset();
           unResize = Arcade.board.onResize(sizeCanvas);
+          Arcade.touch.dpad(stage, steer, { dirs: ["left", "right", "down"] });
         },
         handleInput(intent) {
-          if (over || paused || !cur) return;
-          if (intent.type !== "dir") return;
-          if (intent.dir === "left") tryMove(-1);
-          else if (intent.dir === "right") tryMove(1);
-          else if (intent.dir === "down") {
-            // soft-drop lives on THIS tile only; a fresh tile can't inherit it
-            cur.softUntil = clock + SOFT_WINDOW;
-          }
+          if (intent.type === "dir") steer(intent.dir);
         },
         tick(dt) {
           if (!over && !paused) {
@@ -320,7 +324,7 @@
           if (cur) cur.softUntil = -1;
         },
         getScore() { return score || 0; },
-        teardown() { if (unResize) unResize(); }
+        teardown() { if (unResize) unResize(); Arcade.touch.clear(); }
       };
     }
   });

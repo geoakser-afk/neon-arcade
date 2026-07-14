@@ -80,6 +80,14 @@
         });
       }
 
+      function steer(d) {
+        if (over || paused) return;
+        const nd = DIRS[d];
+        if (!nd) return;
+        if (nd.dr === -dir.dr && nd.dc === -dir.dc) return; // no 180°
+        nextDir = nd;
+      }
+
       function step() {
         dir = nextDir;
         const head = snake[0];
@@ -194,13 +202,10 @@
           sizeCanvas();
           reset();
           unResize = Arcade.board.onResize(sizeCanvas);
+          Arcade.touch.dpad(stage, steer);
         },
         handleInput(intent) {
-          if (over || paused || intent.type !== "dir") return;
-          const nd = DIRS[intent.dir];
-          if (!nd) return;
-          if (nd.dr === -dir.dr && nd.dc === -dir.dc) return; // no 180°
-          nextDir = nd;
+          if (intent.type === "dir") steer(intent.dir);
         },
         tick(dt) {
           const now = performance.now();
@@ -217,7 +222,7 @@
         pause() { paused = true; },
         resume() { paused = false; },
         getScore() { return snake ? snake.length : 0; },
-        teardown() { if (unResize) unResize(); }
+        teardown() { if (unResize) unResize(); Arcade.touch.clear(); }
       };
     }
   });

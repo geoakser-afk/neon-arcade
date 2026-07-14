@@ -139,9 +139,10 @@
           relayout();
           spawn(); spawn(); draw();
           unResize = Arcade.board.onResize(relayout);
+          Arcade.touch.dpad(stage, move);
         },
         handleInput(intent) { if (intent.type === "dir") move(intent.dir); },
-        teardown() { if (unResize) unResize(); }
+        teardown() { if (unResize) unResize(); Arcade.touch.clear(); }
       };
     }
   });

@@ -272,6 +272,14 @@
         }
       }
 
+      function steer(d) {
+        if (over || paused || !piece) return;
+        if (d === "left") tryMove(-1);
+        else if (d === "right") tryMove(1);
+        else if (d === "up") tryRotate();
+        else if (d === "down") { stepDown(); acc = 0; if (piece) ctx.audio.tick(); draw(); }
+      }
+
       function hardDrop() {
         if (!piece) return;
         let dropped = 0;
@@ -321,15 +329,14 @@
           spawn();
           draw();
           unResize = Arcade.board.onResize(relayout);
+          Arcade.touch.dpad(stage, steer);
+          Arcade.touch.action(stage, hardDrop, null, "slam");
         },
 
         handleInput(intent) {
           if (over || paused || !piece) return;
           if (intent.type === "dir") {
-            if (intent.dir === "left") tryMove(-1);
-            else if (intent.dir === "right") tryMove(1);
-            else if (intent.dir === "up") tryRotate();
-            else if (intent.dir === "down") { stepDown(); acc = 0; if (piece) ctx.audio.tick(); draw(); }
+            steer(intent.dir);
           } else if (intent.type === "action") {
             hardDrop();
           }
@@ -351,7 +358,7 @@
         pause() { paused = true; },
         resume() { paused = false; },
         getScore() { return lines; },
-        teardown() { if (unResize) unResize(); unResize = null; }
+        teardown() { if (unResize) unResize(); unResize = null; Arcade.touch.clear(); }
       };
     }
   });

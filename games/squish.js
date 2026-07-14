@@ -39,7 +39,11 @@
       }
 
       function spawnBlob() {
-        const r = cssW * (0.045 + Math.random() * 0.05);
+        // On a narrow phone, scale blobs up so even the smallest is a comfortable
+        // tap target (~44px). Desktop keeps the original smaller/denser blobs.
+        const portrait = window.innerWidth < 720;
+        const base = portrait ? 0.075 : 0.045;
+        const r = cssW * (base + Math.random() * 0.05);
         const hue = HUES[Math.floor(Math.random() * HUES.length)];
         blobs.push({
           x: r + Math.random() * (cssW - r * 2),

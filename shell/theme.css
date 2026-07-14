@@ -35,6 +35,8 @@
   padding: 0;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;   /* no blue flash on tap (mobile) */
+  touch-action: manipulation;                 /* kill 300ms tap delay + double-tap zoom */
 }
 
 html, body {
@@ -461,3 +463,106 @@ html, body {
   * { animation-duration: 0.001ms !important; transition-duration: 60ms !important; }
   .stat.timer.low .val { animation: none; }
 }
+
+/* ============================================================
+   MOBILE / narrow screens (<= 720px). Compact HUD (wraps, smaller
+   stats), full-width hub cards, scaled fonts, safe-area padding.
+   Games size their own canvas via Arcade.board.stageSize (portrait-aware).
+   ============================================================ */
+@media (max-width: 720px) {
+  .hud {
+    padding: 10px 12px;
+    padding-top: max(10px, env(safe-area-inset-top));
+    gap: 8px;
+    flex-wrap: wrap;                 /* let it stack instead of overlapping */
+  }
+  .hud-left { gap: 8px; flex: 1 1 auto; }
+  .hud-right { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .brand { font-size: 17px; }
+  .back-btn { padding: 7px 11px; font-size: 13px; }
+
+  .stat { padding: 4px 9px; min-width: 0; }
+  .stat .label { font-size: 8.5px; letter-spacing: 0.5px; }
+  .stat .val { font-size: 17px; }
+
+  .icon-btn { width: 38px; height: 38px; font-size: 20px; }
+
+  #stage { padding: 6px 8px 16px; }
+
+  /* board-based games (2048, minesweeper, etc.) fill the phone width too */
+  .board { width: var(--board-size, min(92vw, 70vh)); height: var(--board-size, min(92vw, 70vh)); }
+
+  /* hub */
+  .hub { max-width: 100%; padding: 2px 8px 24px; }
+  .hub-title h1 { font-size: 26px; }
+  .hub-title p { font-size: 13px; }
+  .hub-search { max-width: 100%; margin-top: 14px; padding: 2px 2px 2px 14px; }
+  .hub-search input { font-size: 16px; padding: 11px 0; }   /* 16px = no iOS zoom-on-focus */
+
+  /* one comfy column of smaller cards */
+  .hub-grid, .hub-grid.pinned {
+    grid-template-columns: 1fr !important;
+    gap: 12px; margin-top: 16px;
+  }
+  .hub-grid.pinned { padding-bottom: 16px; margin-bottom: 16px; }
+  .card { padding: 16px 16px 14px; }
+  .card.big { padding: 18px 18px 16px; min-width: 0; }
+  .card h3 { font-size: 20px; padding-left: 22px; }
+  .card.big h3 { font-size: 22px; }
+  .card .tag { font-size: 13px; min-height: 0; }
+  .card .dot { width: 11px; height: 11px; margin-bottom: 10px; }
+  .card .pin { font-size: 24px; top: 8px; left: 9px; padding: 6px; }  /* bigger tap target */
+
+  /* overlays / fuse picker fit the small screen */
+  .overlay { padding: 18px 14px; }
+  .overlay h2 { font-size: 22px; }
+  .overlay p { font-size: 14px; }
+  .fuse-row { gap: 7px; }
+  .fuse-btn { padding: 11px 13px; font-size: 17px; min-width: 52px; }
+  .btn { padding: 12px 26px; font-size: 16px; }
+  .btn-row { flex-wrap: wrap; justify-content: center; }
+  .music-row { flex-wrap: wrap; }
+
+  .hint { font-size: 11px; bottom: 2px; padding: 0 8px; }
+}
+
+/* very short landscape phones — keep the HUD tiny so games get the height */
+@media (max-height: 480px) {
+  .hud { padding: 4px 10px; }
+  .stat .val { font-size: 15px; }
+  .icon-btn { width: 34px; height: 34px; font-size: 18px; }
+}
+
+/* ---- on-screen touch controls (Arcade.touch) — only shown on touch ---- */
+.touch-controls { position: absolute; inset: 0; pointer-events: none; z-index: 25; }
+.touch-controls > * { pointer-events: auto; }
+.tc-dpad {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px);
+  gap: 8px; opacity: 0.85;
+}
+.tc-dpad-row { grid-template-columns: repeat(2, 64px); grid-template-rows: 64px; }
+.tc-btn {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border: 1.5px solid var(--accent-soft);
+  color: var(--accent-ink);
+  border-radius: 12px; font-size: 22px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--glow);
+}
+.tc-btn:active { background: color-mix(in srgb, var(--accent) 34%, var(--surface)); transform: scale(0.94); }
+/* place the 4-way dpad in a + shape */
+.tc-up    { grid-column: 2; grid-row: 1; }
+.tc-left  { grid-column: 1; grid-row: 2; }
+.tc-down  { grid-column: 2; grid-row: 2; }
+.tc-right { grid-column: 3; grid-row: 2; }
+
+.tc-action {
+  position: absolute; right: 20px; bottom: 20px;
+  width: 84px; height: 84px; border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+  border: 2px solid var(--accent-soft); color: var(--accent-ink);
+  box-shadow: var(--glow); font-size: 15px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.tc-action:active { background: color-mix(in srgb, var(--accent) 40%, var(--surface)); transform: scale(0.94); }

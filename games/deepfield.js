@@ -17,6 +17,7 @@
       let placed, over, won, cleared;
       let cell = 0, gap = 0;
       let unResize = null, styleEl = null, ctxMenu = null;
+      let flagMode = false, flagBtn = null;   // touch: tap-to-flag toggle
 
       function injectStyle() {
         if (document.getElementById("deepfield-style")) return;
@@ -37,7 +38,14 @@
           ".df-dot{width:38%;height:38%;border-radius:50%;" +
           "background:radial-gradient(circle,color-mix(in srgb,var(--accent) 70%,#ff7a9a) 0%,transparent 70%);" +
           "box-shadow:0 0 10px color-mix(in srgb,var(--accent) 50%,transparent);}" +
-          ".df-cell.boom{background:color-mix(in srgb,#ff7a9a 22%,#0c0c12);}";
+          ".df-cell.boom{background:color-mix(in srgb,#ff7a9a 22%,#0c0c12);}" +
+          ".df-mode{display:block;margin:12px auto 0;padding:12px 22px;border-radius:12px;" +
+          "font-size:17px;font-weight:700;letter-spacing:.02em;cursor:pointer;" +
+          "color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,#12121a);" +
+          "border:1px solid var(--accent-soft);box-shadow:0 0 12px var(--accent-faint);" +
+          "-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;}" +
+          ".df-mode.flagging{background:color-mix(in srgb,var(--accent) 28%,#12121a);" +
+          "box-shadow:0 0 18px var(--accent-soft);}";
         document.head.appendChild(styleEl);
       }
 
@@ -203,8 +211,29 @@
           wrap.appendChild(boardEl);
           const hint = document.createElement("div");
           hint.className = "hint";
-          hint.textContent = "Left-click reveal · right-click flag";
+          const touch = Arcade.touch && Arcade.touch.isTouch;
+          hint.textContent = touch
+            ? "Tap to dig · switch to flag mode to mark voids"
+            : "Left-click reveal · right-click flag";
           wrap.appendChild(hint);
+
+          // On touch there's no right-click, so add a Dig/Flag mode toggle:
+          // tapping it flips what a cell-tap does. Reveal stays the default.
+          if (touch) {
+            flagMode = false;
+            flagBtn = document.createElement("button");
+            flagBtn.type = "button";
+            flagBtn.className = "df-mode";
+            flagBtn.textContent = "⛏ Dig mode";
+            flagBtn.addEventListener("pointerdown", (e) => {
+              e.preventDefault(); e.stopPropagation();
+              flagMode = !flagMode;
+              flagBtn.classList.toggle("flagging", flagMode);
+              flagBtn.textContent = flagMode ? "🚩 Flag mode" : "⛏ Dig mode";
+              ctx.audio.pick();
+            });
+            wrap.appendChild(flagBtn);
+          }
           stage.appendChild(wrap);
 
           ctxMenu = (e) => e.preventDefault();
@@ -224,7 +253,7 @@
           const r = Math.floor((intent.y - gap) / step);
           if (!inBounds(r, c)) return;
           if (intent.button === 2) handleFlag(r, c);
-          else if (intent.button === 0) handleReveal(r, c);
+          else if (intent.button === 0) { if (flagMode) handleFlag(r, c); else handleReveal(r, c); }
         },
         teardown() {
           if (unResize) unResize();

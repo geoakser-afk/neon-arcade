@@ -41,7 +41,12 @@
       function resize() {
         const size = Arcade.board.stageSize(920, 0.82);   // wide — it's a runner
         cssW = Math.round(size);
-        cssH = Math.round(size * 0.62);
+        // On a narrow portrait phone the width is capped near the viewport, so a
+        // 0.62 band would leave the runner tiny (~200px tall) with lots of unused
+        // vertical room. Use a taller aspect on phones — still landscape-ish, but
+        // a much roomier play band. Desktop keeps the original wide 0.62 look.
+        const portrait = window.innerWidth < 720;
+        cssH = Math.round(size * (portrait ? 0.82 : 0.62));
         dpr = window.devicePixelRatio || 1;
         canvas.style.width = cssW + "px";
         canvas.style.height = cssH + "px";
