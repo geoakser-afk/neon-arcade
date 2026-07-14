@@ -98,6 +98,7 @@
       const ventDrain = 15;                                                    // %/s, monitor up
       function baseDrain(n) { return 1.05 + n * 0.05; }       // %/s idle (crank always on)
       const doorDrain = 1.4, monDrain = 1.7, lightCost = 1.1;
+      const BOTH_DOORS_DRAIN = 7.5;   // heavy extra cost for holding BOTH doors shut
       // Wisp (green, left only): advances toward you; each LEFT flash pushes it
       // back a chunk. Reaches you if it isn't beaten back in time.
       // short delay so the Wisp slots into the quiet gaps between Husks (it fully
@@ -254,11 +255,17 @@
           d.closed = false;
           ctx.audio.thunk();
         } else {
-          // sealing — purely defensive. It does NOT scare the Husk off; the Husk
-          // still arrives and presses (siege). Seal BEFORE it reaches you. If it's
-          // already pressing, sealing again does nothing.
+          // sealing
           d.closed = true;
           ctx.audio.thunk();
+          // A REGULAR (non-siege) Husk that's approaching is INSTANTLY driven off
+          // the moment you seal — the red outline vanishes and it's gone, so you
+          // can reopen right away. (Siege Husks are NOT scared off; they'll still
+          // press the sealed door and lock it.)
+          if (h.active && !h.isSiege && h.siege <= 0 && !h.retreating) {
+            halls[side] = newHall(hallDelay(night));
+            ctx.audio.tone(side === "L" ? 150 : 190, 0.1, { type: "sine", vol: 0.05, glide: 90 });
+          }
         }
       }
       // FLASH (center button, under the crank) — drives the Wisp off in one hit.
@@ -372,8 +379,11 @@
 
         // ---- power (crank is live from night 1) ----
         let drain = baseDrain(night);
-        if (doors.L.closed) drain += doorDrain;
-        if (doors.R.closed) drain += doorDrain;
+        const doorsClosed = (doors.L.closed ? 1 : 0) + (doors.R.closed ? 1 : 0);
+        // one door is cheap; holding BOTH costs a LOT more (so you can't just camp
+        // both shut and out-crank it). Second door is heavily penalized.
+        if (doorsClosed === 1) drain += doorDrain;
+        else if (doorsClosed === 2) drain += doorDrain + BOTH_DOORS_DRAIN;
         if (monitorUp) drain += monDrain;
         if (has("leech") && leech.latched) drain += LEECH_DRAIN;   // Leech feeds on power
         power -= drain * (dt / 1000);
