@@ -47,6 +47,7 @@ locked/paused, clears the stage on teardown, and shows overlays. Don't duplicate
 ## Input intents (from ctx via handleInput)
 - `{ type:"dir", dir:"up"|"down"|"left"|"right" }` — arrows, WASD, and swipe all map here.
 - `{ type:"action" }` — space or enter (use for one-button games).
+- `{ type:"hold", down:true|false }` — press-and-HOLD: `down:true` on press, `down:false` on release (mouse button or space). Use for games where holding matters (e.g. a Geometry-Dash wave). Fires alongside `action`/`point` — just read the one you need.
 - `{ type:"point", phase:"down"|"move"|"up", x, y, nx, ny, button, el }` — pointer/mouse/touch.
   `x,y` are pixels relative to the stage; `nx,ny` are 0..1 normalized. `button` 0=left, 2=right, -1=hover-move.
   For click games use `phase:"down"` + `button===0`. For right-click (flag) use `button===2`.
