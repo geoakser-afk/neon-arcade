@@ -566,3 +566,25 @@ html, body {
   display: flex; align-items: center; justify-content: center;
 }
 .tc-action:active { background: color-mix(in srgb, var(--accent) 40%, var(--surface)); transform: scale(0.94); }
+
+/* ---- ad slot: dormant by default (renders nothing, takes no space).
+   Turns into a labelled reserved box only when .live is added (window.ARCADE_ADS).
+   Drop an AdSense/<ins> unit inside the .live container to monetize. ---- */
+.ad-slot { display: none; }
+.ad-slot.live {
+  display: block;
+  max-width: 728px;
+  margin: 26px auto 4px;
+  min-height: 90px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,0.015);
+  position: relative;
+}
+.ad-slot.live::before {
+  content: "advertisement";
+  position: absolute; top: 6px; left: 12px;
+  font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--text-faint);
+}
+@media (max-width: 720px) { .ad-slot.live { max-width: 100%; min-height: 100px; } }

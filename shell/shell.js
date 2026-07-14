@@ -283,6 +283,16 @@
     clearBtn.onclick = () => { input.value = ""; build(""); input.focus(); };
 
     build("");
+
+    // ---- ad-ready slot (dormant until an ad script is added) ----
+    // A clean, reserved container at the bottom of the hub. It renders nothing
+    // visible until window.ARCADE_ADS is turned on (see how-to in the code), so
+    // there's zero clutter now — just a labelled home for a future AdSense unit.
+    const adSlot = el("div", "ad-slot");
+    adSlot.setAttribute("data-ad-slot", "hub-bottom");
+    if (window.ARCADE_ADS) adSlot.classList.add("live");   // flip on when ads go live
+    hub.appendChild(adSlot);
+
     stage.appendChild(hub);
   }
 
