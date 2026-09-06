@@ -1,7 +1,8 @@
 /* Bloom — a screensaver you play. A soft neon halo breathes out and in at a
    calm tempo; click when it reaches the outer ring to add a petal and grow a
    glowing mandala flower. On-beat = a warm rising chime + a new petal. Off-beat
-   just dims the bloom for a moment — no fail, endless zen. */
+   = the newest petal shakes loose and falls away, a red X marks the miss, and
+   the count drops by one. Reward for timing, penalty for mashing. */
 (function () {
   Arcade.register({
     id: "bloom",
@@ -30,6 +31,13 @@
       let ringScale;          // current marker-ring size multiplier (randomized per blossom)
       let ringScaleTarget;    // eases toward this so the ring resizes smoothly
       let best = 0;           // all-time best petal count
+      let falling;            // petals knocked off by a miss, mid-animation [{i, start}]
+      let shake;              // 0..1 flower jitter after a miss
+      let missFlash;          // 0..1 red pulse on the marker ring after a miss
+      let missMark;           // {x, y, t} — red X drawn where the bad click landed
+      const RED = { r: 255, g: 82, b: 96 };
+      const MISS_ANIM = 720;  // ms a knocked-off petal takes to shake + fall away
+      const MARK_LIFE = 650;  // ms the red X stays visible
 
       // pick a fresh random ring size — big, small, medium, whatever
       function randomRingScale() { return 0.45 + Math.random() * 0.75; }   // 0.45x .. 1.20x
@@ -46,6 +54,13 @@
         };
       }
       function rgba(c, a) { return "rgba(" + c.r + "," + c.g + "," + c.b + "," + a + ")"; }
+      function mix(a, b, t) {
+        return {
+          r: Math.round(a.r + (b.r - a.r) * t),
+          g: Math.round(a.g + (b.g - a.g) * t),
+          b: Math.round(a.b + (b.b - a.b) * t)
+        };
+      }
 
       function resize() {
         const size = Arcade.board.stageSize(860);
@@ -67,6 +82,10 @@
         hitFlash = 0;
         ringScale = randomRingScale();
         ringScaleTarget = ringScale;
+        falling = [];
+        shake = 0;
+        missFlash = 0;
+        missMark = null;
       }
 
       // ring capacities: 6, 12, 18, ... find ring + position for petal index i
@@ -85,7 +104,7 @@
 
       function distToBeat() { return Math.min(beatClock, BEAT - beatClock); }
 
-      function onClick() {
+      function onClick(px, py) {
         const d = distToBeat();
         if (d <= WINDOW) {
           // on-beat: bloom a petal + rising chime
@@ -101,9 +120,26 @@
           // every blossom re-randomizes the marker-ring radius (big/small/medium)
           ringScaleTarget = randomRingScale();
         } else {
-          // off-beat: gentle wilt, never punishing
+          // off-beat: the newest petal shakes loose and falls away (-1), the
+          // flower jitters, and a red X marks where the bad click landed
+          const now = performance.now();
           wilt = Math.min(1, wilt + 0.5);
-          ctx.audio.tone(160, 0.2, { type: "sine", vol: 0.06, glide: 118 });
+          shake = 1;
+          missFlash = 1;
+          missMark = {
+            x: typeof px === "number" ? px : cssW / 2,
+            y: typeof py === "number" ? py : cssH / 2 - fitRadius() * 0.5,
+            t: now
+          };
+          if (petals.length) {
+            const lost = petals.pop();
+            falling.push({ i: lost.i, start: now });
+            ctx.setScore(petals.length);
+            // short buzzy drop — clearly "wrong" but still soft
+            ctx.audio.tone(190, 0.22, { type: "triangle", vol: 0.07, glide: 95 });
+          } else {
+            ctx.audio.tone(160, 0.2, { type: "sine", vol: 0.06, glide: 118 });
+          }
         }
       }
 
@@ -116,6 +152,13 @@
         rot += dt * (reduced ? 0 : 0.00007);
         if (wilt > 0) wilt = Math.max(0, wilt - dt * 0.0022);
         if (hitFlash > 0) hitFlash = Math.max(0, hitFlash - dt * 0.004);
+        if (shake > 0) shake = Math.max(0, shake - dt * 0.0038);
+        if (missFlash > 0) missFlash = Math.max(0, missFlash - dt * 0.0025);
+        if (missMark && performance.now() - missMark.t > MARK_LIFE) missMark = null;
+        if (falling.length) {
+          const now = performance.now();
+          falling = falling.filter(f => now - f.start < MISS_ANIM);
+        }
       }
 
       function drawPetal(cx, cy, R, ang, len, wid, col, alpha) {
@@ -165,8 +208,11 @@
         const flowerScale = Math.min(1, (fit * 0.86) / (maxRingR + step * 0.5));
 
         g.save();
-        g.translate(cx, cy);
-        g.rotate(rot);
+        // miss jitter: quick decaying wobble of the whole flower
+        const jx = shake ? Math.sin(now * 0.07) * shake * shake * fit * 0.028 : 0;
+        const jy = shake ? Math.cos(now * 0.09) * shake * shake * fit * 0.018 : 0;
+        g.translate(cx + jx, cy + jy);
+        g.rotate(rot + (shake ? Math.sin(now * 0.05) * shake * 0.035 : 0));
         g.scale(flowerScale, flowerScale);
 
         for (let k = 0; k < petals.length; k++) {
@@ -183,6 +229,33 @@
           const len = step * 0.72 * sc;
           const wid = step * 0.30 * sc;
           drawPetal(0, 0, R, ang, len, wid, col, alpha);
+        }
+
+        // petals knocked off by a miss: rattle in place, blush red, then
+        // slip outward and drop away while fading
+        for (let k = 0; k < falling.length; k++) {
+          const f = falling[k];
+          const info = ringOf(f.i);
+          const age = now - f.start;
+          const baseR = coreR + (info.ring + 1) * step;
+          const baseAng = (Math.PI * 2 * info.pos) / info.cap + info.ring * 0.4;
+          const SHAKE_MS = 240;
+          let R = baseR, ang = baseAng, dropY = 0, alpha = 0.75, sc = 1;
+          const redness = Math.min(1, age / 160);
+          if (age < SHAKE_MS) {
+            const s = 1 - age / SHAKE_MS;
+            ang += Math.sin(age * 0.11) * 0.16 * (0.4 + s);
+            R += Math.sin(age * 0.09) * step * 0.06;
+          } else {
+            const t = Math.min(1, (age - SHAKE_MS) / (MISS_ANIM - SHAKE_MS));
+            R = baseR + t * step * 1.3;
+            dropY = t * t * step * 1.6;
+            ang += t * 0.5;
+            alpha = 0.75 * (1 - t);
+            sc = 1 - t * 0.35;
+          }
+          const col = mix(mixWhite(accRgb, 0.2), RED, redness);
+          drawPetal(0, dropY, R, ang, step * 0.72 * sc, step * 0.30 * sc, col, alpha * dim);
         }
 
         // glowing core
@@ -209,6 +282,16 @@
         g.beginPath();
         g.arc(cx, cy, fit, 0, Math.PI * 2);
         g.stroke();
+        // red pulse on the marker ring after a miss
+        if (missFlash > 0) {
+          g.strokeStyle = rgba(RED, 0.55 * missFlash);
+          g.lineWidth = 2 + missFlash * 3;
+          g.shadowColor = rgba(RED, 0.7 * missFlash);
+          g.shadowBlur = 16 + missFlash * 18;
+          g.beginPath();
+          g.arc(cx, cy, fit, 0, Math.PI * 2);
+          g.stroke();
+        }
         // breathing halo — near marker = on beat
         const near = Math.max(0, 1 - distToBeat() / WINDOW);
         g.strokeStyle = rgba(mixWhite(accRgb, 0.35), 0.35 + near * 0.4);
@@ -247,6 +330,35 @@
         g.fillText("best " + best, cx, cy + m * 0.028);
         g.restore();
 
+        // red X where the off-beat click landed — pops in, drifts up, fades
+        if (missMark) {
+          const age = now - missMark.t;
+          const t = Math.min(1, age / MARK_LIFE);
+          const pop = age < 120 ? 1 + (1 - age / 120) * 0.5 : 1;
+          const fade = 1 - t * t;
+          const size = Math.max(14, m * 0.05) * pop;
+          const mx = Math.min(cssW - size, Math.max(size, missMark.x));
+          const my = Math.min(cssH - size, Math.max(size, missMark.y)) - t * m * 0.03;
+          g.save();
+          g.globalAlpha = fade;
+          g.strokeStyle = rgba(RED, 0.95);
+          g.lineCap = "round";
+          g.lineWidth = Math.max(2.5, size * 0.18);
+          g.shadowColor = rgba(RED, 0.8);
+          g.shadowBlur = 14;
+          const h = size * 0.5;
+          g.beginPath();
+          g.moveTo(mx - h, my - h); g.lineTo(mx + h, my + h);
+          g.moveTo(mx + h, my - h); g.lineTo(mx - h, my + h);
+          g.stroke();
+          g.fillStyle = rgba(RED, 0.95);
+          g.font = "800 " + Math.round(size * 0.7) + "px system-ui, sans-serif";
+          g.textAlign = "center";
+          g.textBaseline = "top";
+          g.fillText("-1", mx, my + h + size * 0.15);
+          g.restore();
+        }
+
         // gentle "click to bloom" prompt before first petal — sits ABOVE the core
         if (!petals.length) {
           g.save();
@@ -279,7 +391,7 @@
 
           const hint = document.createElement("div");
           hint.className = "hint";
-          hint.textContent = "Click on the beat to bloom";
+          hint.textContent = "Click on the beat to bloom — miss and a petal falls off";
           wrap.appendChild(hint);
 
           stage.appendChild(wrap);
@@ -295,7 +407,7 @@
 
         handleInput(intent) {
           if (intent.type === "action") onClick();
-          else if (intent.type === "point" && intent.phase === "down" && intent.button === 0) onClick();
+          else if (intent.type === "point" && intent.phase === "down" && intent.button === 0) onClick(intent.x, intent.y);
         },
 
         tick(dt) { update(dt); draw(); },
@@ -304,7 +416,7 @@
           if (unResize) unResize();
           unResize = null;
           stageEl = ctx = canvas = g = null;
-          petals = null;
+          petals = null; falling = null; missMark = null;
         }
       };
     }
