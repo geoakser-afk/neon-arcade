@@ -6,15 +6,8 @@
    = gentle wobble, it says the answer. No losing. Speech is the browser's own
    voice — no files, no network. */
 (function () {
-  function say(text, opts) {
-    try {
-      if (!window.speechSynthesis) return;
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "en-US"; u.rate = (opts && opts.rate) || 0.85; u.pitch = (opts && opts.pitch) || 1.15; u.volume = 1;
-      window.speechSynthesis.speak(u);
-    } catch (e) {}
-  }
+  // spoken lines = pre-rendered Kokoro clips chained by the shell (Arcade.voice); parts = clip keys
+  function say(parts) { if (window.Arcade && Arcade.voice) Arcade.voice.say(parts); }
   // letter, word, "says" sound, colors, and a simple drawn picture
   const L = [
     { l: "A", w: "apple", s: "ah", c: "#ff6b6b", c2: "#b8232f", d: function (g, r) { g.beginPath(); g.arc(0, r * 0.1, r, 0, 6.29); g.fill(); g.fillStyle = "#7fe0a0"; g.beginPath(); g.ellipse(r * 0.35, -r * 0.85, r * 0.32, r * 0.15, -0.6, 0, 6.29); g.fill(); g.strokeStyle = "#6b4a2a"; g.lineWidth = r * 0.1; g.beginPath(); g.moveTo(0, -r * 0.9); g.lineTo(0, -r * 1.25); g.stroke(); } },
@@ -22,7 +15,7 @@
     { l: "C", w: "cat", s: "kuh", c: "#c9c3ff", c2: "#6a55b5", d: function (g, r) { g.beginPath(); g.moveTo(-r * 0.75, -r * 0.3); g.lineTo(-r * 0.65, -r * 1.05); g.lineTo(-r * 0.15, -r * 0.7); g.closePath(); g.fill(); g.beginPath(); g.moveTo(r * 0.75, -r * 0.3); g.lineTo(r * 0.65, -r * 1.05); g.lineTo(r * 0.15, -r * 0.7); g.closePath(); g.fill(); g.beginPath(); g.arc(0, 0, r * 0.85, 0, 6.29); g.fill(); g.fillStyle = "#2a2233"; [-1, 1].forEach(function (d) { g.beginPath(); g.ellipse(d * r * 0.3, -r * 0.1, r * 0.08, r * 0.16, 0, 0, 6.29); g.fill(); }); g.strokeStyle = "#2a2233"; g.lineWidth = r * 0.05; g.beginPath(); g.moveTo(-r * 0.15, r * 0.25); g.lineTo(0, r * 0.35); g.lineTo(r * 0.15, r * 0.25); g.stroke(); } },
     { l: "D", w: "duck", s: "duh", c: "#ffe27a", c2: "#c99a1c", d: function (g, r) { g.beginPath(); g.ellipse(0, r * 0.25, r, r * 0.7, 0, 0, 6.29); g.fill(); g.beginPath(); g.arc(r * 0.45, -r * 0.45, r * 0.5, 0, 6.29); g.fill(); g.fillStyle = "#ff9f5a"; g.beginPath(); g.moveTo(r * 0.9, -r * 0.45); g.lineTo(r * 1.35, -r * 0.3); g.lineTo(r * 0.9, -r * 0.2); g.closePath(); g.fill(); g.fillStyle = "#2a2233"; g.beginPath(); g.arc(r * 0.6, -r * 0.55, r * 0.08, 0, 6.29); g.fill(); } },
     { l: "E", w: "egg", s: "eh", c: "#fff3d6", c2: "#d9b98a", d: function (g, r) { g.beginPath(); g.ellipse(0, 0, r * 0.78, r, 0, 0, 6.29); g.fill(); g.fillStyle = "rgba(255,255,255,0.55)"; g.beginPath(); g.ellipse(-r * 0.25, -r * 0.4, r * 0.18, r * 0.3, -0.3, 0, 6.29); g.fill(); } },
-    { l: "F", w: "fish", s: "fff", c: "#7fe0ff", c2: "#2a7a9a", d: function (g, r) { g.beginPath(); g.ellipse(0, 0, r, r * 0.65, 0, 0, 6.29); g.fill(); g.beginPath(); g.moveTo(-r * 0.8, 0); g.lineTo(-r * 1.35, -r * 0.5); g.lineTo(-r * 1.35, r * 0.5); g.closePath(); g.fill(); g.fillStyle = "#fff"; g.beginPath(); g.arc(r * 0.45, -r * 0.15, r * 0.18, 0, 6.29); g.fill(); g.fillStyle = "#2a2233"; g.beginPath(); g.arc(r * 0.5, -r * 0.15, r * 0.09, 0, 6.29); g.fill(); } },
+    { l: "F", w: "fish", s: "ff", c: "#7fe0ff", c2: "#2a7a9a", d: function (g, r) { g.beginPath(); g.ellipse(0, 0, r, r * 0.65, 0, 0, 6.29); g.fill(); g.beginPath(); g.moveTo(-r * 0.8, 0); g.lineTo(-r * 1.35, -r * 0.5); g.lineTo(-r * 1.35, r * 0.5); g.closePath(); g.fill(); g.fillStyle = "#fff"; g.beginPath(); g.arc(r * 0.45, -r * 0.15, r * 0.18, 0, 6.29); g.fill(); g.fillStyle = "#2a2233"; g.beginPath(); g.arc(r * 0.5, -r * 0.15, r * 0.09, 0, 6.29); g.fill(); } },
     { l: "H", w: "heart", s: "huh", c: "#ff8fa3", c2: "#b8455e", d: function (g, r) { g.beginPath(); g.moveTo(0, r * 0.9); g.bezierCurveTo(-r * 1.4, -r * 0.05, -r * 0.7, -r * 1.1, 0, -r * 0.45); g.bezierCurveTo(r * 0.7, -r * 1.1, r * 1.4, -r * 0.05, 0, r * 0.9); g.closePath(); g.fill(); } },
     { l: "M", w: "moon", s: "mmm", c: "#fff3b0", c2: "#c9b464", d: function (g, r) { g.beginPath(); g.arc(0, 0, r, 0, 6.29); g.fill(); g.globalCompositeOperation = "destination-out"; g.beginPath(); g.arc(r * 0.45, -r * 0.2, r * 0.8, 0, 6.29); g.fill(); g.globalCompositeOperation = "source-over"; } },
     { l: "O", w: "octopus", s: "oh", c: "#c98cff", c2: "#6b3fb5", d: function (g, r) { g.beginPath(); g.arc(0, -r * 0.2, r * 0.8, 0, 6.29); g.fill(); g.lineCap = "round"; g.strokeStyle = g.fillStyle; g.lineWidth = r * 0.22; for (let i = 0; i < 5; i++) { const x = (i - 2) * r * 0.36; g.beginPath(); g.moveTo(x, r * 0.4); g.quadraticCurveTo(x + (i % 2 ? r * 0.25 : -r * 0.25), r * 0.9, x, r * 1.2); g.stroke(); } g.fillStyle = "#2a2233"; [-1, 1].forEach(function (d) { g.beginPath(); g.arc(d * r * 0.3, -r * 0.3, r * 0.1, 0, 6.29); g.fill(); }); } },
@@ -67,7 +60,7 @@
         idx = (i + L.length) % L.length;
         letterSq = 1; newQuiz();
         ctx.audio.tone(520, 0.1, { type: "sine", vol: 0.08, glide: 780 });
-        if (speak !== false) say(cur().l + ". " + cur().l + " is for " + cur().w + ".");
+        if (speak !== false) say([cur().l + ".", "is for", cur().w]);
       }
       function newQuiz() {
         quizTarget = idx;
@@ -76,20 +69,20 @@
         opts.sort(function () { return Math.random() - 0.5; });
         quiz = opts; quizLock = 0;
       }
-      function sayLetter() { letterSq = 1; ctx.audio.tone(660, 0.12, { type: "sine", vol: 0.1 }); say(cur().l + ". " + cur().l + " says " + cur().s + "."); }
-      function sayWord() { picSq = 1; ctx.audio.tone(440, 0.12, { type: "sine", vol: 0.1, glide: 660 }); say(cur().w + "!"); }
-      function askQuiz() { say("Find the letter " + L[quizTarget].l + "."); }
+      function sayLetter() { letterSq = 1; ctx.audio.tone(660, 0.12, { type: "sine", vol: 0.1 }); say([cur().l + ".", cur().l + ".", "says", cur().s]); }
+      function sayWord() { picSq = 1; ctx.audio.tone(440, 0.12, { type: "sine", vol: 0.1, glide: 660 }); say([cur().w]); }
+      function askQuiz() { say(["Find the letter", L[quizTarget].l + "."]); }
       function pickQuiz(k) {
         if (quizLock > 0) return;
         if (k === quizTarget) {
           found++; ctx.setScore(found); winFx = 1; quizLock = 1800;
           ctx.audio.arp([523, 659, 784, 1046], { dur: 0.18, step: 0.07, vol: 0.14, type: "sine" });
-          say("Yes! " + L[k].l + "!");
+          say(["Yes!", L[k].l + "."]);
           for (let i = 0; i < (reduced ? 10 : 50); i++) { const a = Math.random() * 6.28, sp = S * (0.0003 + Math.random() * 0.0006); confetti.push({ x: S / 2, y: S * 0.86, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - S * 0.0005, life: 1, r: S * (0.005 + Math.random() * 0.006), col: ["#ffd36b", "#ff8fd0", "#74b9ff", "#7fe0a0"][i % 4] }); }
           setTimeout(function () { if (ctx) goTo(idx + 1); }, 1700);
         } else {
           wrongFx = 1; ctx.audio.tone(300, 0.14, { type: "triangle", vol: 0.07, glide: 240 });
-          say("That's " + L[k].l + ". Find the " + L[quizTarget].l + ".");
+          say(["That's", L[k].l + ".", "Find the letter", L[quizTarget].l + "."]);
         }
       }
       function update(dt) {
@@ -165,7 +158,7 @@
           Arcade.input.setPointerTarget(canvas);
           unResize = Arcade.board.onResize(function () { resize(); });
           draw();
-          setTimeout(function () { if (ctx) say(cur().l + ". " + cur().l + " is for " + cur().w + "."); }, 400);
+          setTimeout(function () { if (ctx) say([cur().l + ".", "is for", cur().w]); }, 400);
         },
         handleInput(intent) {
           if (intent.type !== "point" || intent.phase !== "down" || intent.button !== 0) return;
@@ -182,7 +175,7 @@
         tick(dt) { update(Math.min(50, dt)); draw(); },
         getScore() { return found; },
         teardown() {
-          try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+          if (window.Arcade && Arcade.voice) Arcade.voice.stop();
           if (unResize) unResize(); unResize = null;
           stageEl = ctx = canvas = g = null; confetti = [];
         }

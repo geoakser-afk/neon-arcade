@@ -126,3 +126,11 @@ A regular game can ALSO appear in Chris's hub without being kid-only by providin
   the game by picture alone. Draw it with the same helpers you use in-game.
 - Keep the file self-contained (~250–450 lines), same lifecycle + teardown rules as every other game.
 - A big star counter (★ n) at the top is the whole HUD; also call `ctx.setScore(n)`.
+
+**Speech (kid games only):** call `Arcade.voice.say("Yes!")` or `Arcade.voice.say(["Yes!", "five", "apples"])`
+— each part is one pre-rendered clip in `audio/voice/<slug>.wav` (slug = lowercase, non-alphanumerics → `-`),
+played back to back; a missing clip falls back to the browser's speechSynthesis. Clips are rendered ONCE,
+offline, with Kokoro (`tools/kokoro-tts/`): add the exact phrase to `phrases.json`, run `node gen.mjs`,
+commit the new `.wav`. Keep phrases composable (numbers, colors, shapes, "Find the" …) so combos don't explode.
+This is the one exception to "no audio files": speech can't be synthesized from oscillators, and running a
+TTS model in the browser would mean a ~90 MB download before a 5-year-old hears anything.

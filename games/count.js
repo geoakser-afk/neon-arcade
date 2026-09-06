@@ -5,15 +5,8 @@
    bubbles appear — tap the one that matches. Right = confetti + "Yes! Five!".
    Wrong = a gentle wobble and the game says the right answer. No losing. */
 (function () {
-  function say(text, opts) {
-    try {
-      if (!window.speechSynthesis) return;
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "en-US"; u.rate = (opts && opts.rate) || 0.9; u.pitch = (opts && opts.pitch) || 1.15; u.volume = 1;
-      window.speechSynthesis.speak(u);
-    } catch (e) {}
-  }
+  // spoken lines = pre-rendered Kokoro clips chained by the shell (Arcade.voice); parts = clip keys
+  function say(parts) { if (window.Arcade && Arcade.voice) Arcade.voice.say(parts); }
   const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
   const THINGS = [
     { name: "apples", col: "#ff6b6b", col2: "#b8232f", draw: function (g, r) { g.beginPath(); g.arc(0, r * 0.08, r, 0, Math.PI * 2); g.fill(); g.fillStyle = "#7fe0a0"; g.beginPath(); g.ellipse(r * 0.35, -r * 0.85, r * 0.3, r * 0.14, -0.6, 0, Math.PI * 2); g.fill(); g.strokeStyle = "#6b4a2a"; g.lineWidth = r * 0.1; g.beginPath(); g.moveTo(0, -r * 0.9); g.lineTo(0, -r * 1.2); g.stroke(); } },
@@ -62,7 +55,7 @@
         thing = THINGS[Math.floor(Math.random() * THINGS.length)];
         counted = 0; phase = "count"; choices = []; winT = 0; numPop = 0;
         layoutItems();
-        say("Count the " + thing.name + "!");
+        say(["Count the", thing.name]);
       }
       function layoutItems() {
         items = [];
@@ -89,19 +82,19 @@
           while (opts.length < 3) { const c = Math.max(1, Math.min(10, target + Math.floor(Math.random() * 5) - 2)); if (opts.indexOf(c) < 0) opts.push(c); }
           opts.sort(function () { return Math.random() - 0.5; });
           choices = opts;
-          setTimeout(function () { if (ctx) say("How many " + thing.name + "? Tap the number."); }, 900);
+          setTimeout(function () { if (ctx) say(["How many?", "Tap the number."]); }, 900);
         }
       }
       function pick(c) {
         if (c === target) {
           phase = "win"; winT = 0; rounds++; ctx.setScore(rounds);
           ctx.audio.arp([523, 659, 784, 1046, 1318], { dur: 0.2, step: 0.08, vol: 0.16, type: "sine" });
-          say("Yes! " + WORDS[target] + " " + thing.name + "!");
+          say(["Yes!", WORDS[target], thing.name]);
           for (let i = 0; i < (reduced ? 12 : 60); i++) { const a = Math.random() * 6.28, sp = S * (0.0003 + Math.random() * 0.0007); confetti.push({ x: S / 2, y: S * 0.3, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - S * 0.0004, life: 1, r: S * (0.005 + Math.random() * 0.007), col: ["#ffd36b", "#ff8fd0", "#74b9ff", "#7fe0a0", "#ffb86b"][i % 5] }); }
         } else {
           wrongFx = 1;
           ctx.audio.tone(300, 0.15, { type: "triangle", vol: 0.07, glide: 240 });
-          say("Not that one. It's " + WORDS[target] + ". Tap " + WORDS[target] + ".");
+          say(["Not that one.", "It's", WORDS[target]]);
         }
       }
       function update(dt) {
@@ -187,18 +180,18 @@
             items.forEach(function (it) { if (it.done) return; const d = Math.hypot(x - it.x, y - it.y); if (d < it.r * 1.6 && d < bd) { bd = d; best = it; } });
             if (best) { tapItem(best); return; }
             // tapping the big number repeats the count so far
-            if (Math.hypot(x - S / 2, y - S * 0.19) < S * 0.12) { say(counted ? WORDS[counted] : "Tap the " + thing.name); return; }
+            if (Math.hypot(x - S / 2, y - S * 0.19) < S * 0.12) { say(counted ? WORDS[counted] : ["Tap the", thing.name]); return; }
             ctx.audio.tone(330, 0.08, { type: "sine", vol: 0.04, glide: 420 });
           } else if (phase === "pick") {
             const w = S * 0.2, gap = S * 0.05, x0 = (S - (w * 3 + gap * 2)) / 2, yy = S * 0.9;
             for (let i = 0; i < choices.length; i++) { const cx = x0 + i * (w + gap) + w / 2; if (Math.hypot(x - cx, y - yy) < w * 0.6) { pick(choices[i]); return; } }
-            say("How many " + thing.name + "? Tap a number.");
+            say(["How many?", "Tap a number."]);
           }
         },
         tick(dt) { update(Math.min(50, dt)); draw(); },
         getScore() { return rounds; },
         teardown() {
-          try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+          if (window.Arcade && Arcade.voice) Arcade.voice.stop();
           if (unResize) unResize(); unResize = null;
           stageEl = ctx = canvas = g = null; items = []; confetti = [];
         }

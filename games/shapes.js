@@ -5,15 +5,8 @@
    game repeats the ask. Learns: circle, square, triangle, star, heart, diamond
    + red, orange, yellow, green, blue, purple, pink. No losing. */
 (function () {
-  function say(text, opts) {
-    try {
-      if (!window.speechSynthesis) return;
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "en-US"; u.rate = (opts && opts.rate) || 0.88; u.pitch = (opts && opts.pitch) || 1.15; u.volume = 1;
-      window.speechSynthesis.speak(u);
-    } catch (e) {}
-  }
+  // spoken lines = pre-rendered Kokoro clips chained by the shell (Arcade.voice); parts = clip keys
+  function say(parts) { if (window.Arcade && Arcade.voice) Arcade.voice.say(parts); }
   const COLORS = [
     { n: "red", c: "#ff6b6b" }, { n: "orange", c: "#ffb86b" }, { n: "yellow", c: "#ffd36b" }, { n: "green", c: "#7fe0a0" },
     { n: "blue", c: "#74b9ff" }, { n: "purple", c: "#c98cff" }, { n: "pink", c: "#ff8fd0" }
@@ -69,22 +62,22 @@
         }
         target = cards[Math.floor(Math.random() * 4)];
         lock = 0;
-        say("Find the " + target.col.n + " " + target.shape + ".");
+        say(["Find the", target.col.n, target.shape]);
       }
-      function ask() { if (target) say("Find the " + target.col.n + " " + target.shape + "."); }
+      function ask() { if (target) say(["Find the", target.col.n, target.shape]); }
       function tapCard(c) {
         if (lock > 0) return;
         c.sq = 1;
         if (c === target) {
           found++; ctx.setScore(found); lock = 2000;
           ctx.audio.arp([523, 659, 784, 1046], { dur: 0.18, step: 0.07, vol: 0.14, type: "sine" });
-          say("Yes! The " + c.col.n + " " + c.shape + "!");
+          say(["Yes! The", c.col.n, c.shape]);
           const sl = slots()[cards.indexOf(c)];
           for (let i = 0; i < (reduced ? 10 : 50); i++) { const a = Math.random() * 6.28, sp = S * (0.0003 + Math.random() * 0.0006); confetti.push({ x: sl.x, y: sl.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - S * 0.0004, life: 1, r: S * (0.005 + Math.random() * 0.006), col: ["#ffd36b", "#ff8fd0", "#74b9ff", "#7fe0a0"][i % 4] }); }
           setTimeout(function () { if (ctx) newPuzzle(); }, 1900);
         } else {
           wrongFx = 1; ctx.audio.tone(300, 0.14, { type: "triangle", vol: 0.07, glide: 240 });
-          say("That's the " + c.col.n + " " + c.shape + ". Find the " + target.col.n + " " + target.shape + ".");
+          say(["That's the", c.col.n, c.shape, "Find the", target.col.n, target.shape]);
         }
       }
       function update(dt) {
@@ -158,7 +151,7 @@
         tick(dt) { update(Math.min(50, dt)); draw(); },
         getScore() { return found; },
         teardown() {
-          try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+          if (window.Arcade && Arcade.voice) Arcade.voice.stop();
           if (unResize) unResize(); unResize = null;
           stageEl = ctx = canvas = g = null; cards = []; confetti = [];
         }

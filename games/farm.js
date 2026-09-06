@@ -145,15 +145,7 @@
 
       // browser speech (no files, no network): says the noise AND the animal, so it's unmistakable
       const NOISE = { cow: "Moo! Cow.", sheep: "Baa! Sheep.", duck: "Quack quack! Duck.", dog: "Woof woof! Dog.", cat: "Meow! Cat.", pig: "Oink oink! Pig." };
-      function speak(kind) {
-        try {
-          if (!window.speechSynthesis) return;
-          window.speechSynthesis.cancel();
-          const u = new SpeechSynthesisUtterance(NOISE[kind]);
-          u.lang = "en-US"; u.rate = 0.9; u.pitch = kind === "cow" || kind === "dog" ? 0.8 : 1.25; u.volume = 1;
-          window.speechSynthesis.speak(u);
-        } catch (e) {}
-      }
+      function speak(kind) { if (window.Arcade && Arcade.voice) Arcade.voice.say(NOISE[kind]); }
       // each animal's synthesized voice — layered sawtooth/triangle "formants" with
       // pitch bends and vibrato so they read as the real animal, not a beep.
       function vib(f, dur, opts) {
@@ -304,7 +296,7 @@
         tick(dt) { update(Math.min(50, dt)); draw(); },
         getScore() { return taps; },
         teardown() {
-          try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+          if (window.Arcade && Arcade.voice) Arcade.voice.stop();
           if (unResize) unResize(); unResize = null;
           stageEl = ctx = canvas = g = null; animals = []; floaties = []; confetti = [];
         }
