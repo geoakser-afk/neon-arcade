@@ -216,72 +216,224 @@
       function rank(l) { return RANKS[Math.min(RANKS.length - 1, l - 1)]; }
 
       // ---------- sounds: every toy has its own voice ----------
-      // Each recipe: (a=ctx.audio, v=volume 0..1, w=start offset seconds)
+      // Two layers:
+      //  1) FAMILY recipes (by category feel) shaped by a per-toy VOICE — pitch (p) and
+      //     variant (k) derived from the toy's id — so two crunchies never sound identical.
+      //  2) SIGNATURE recipes keyed by toy id for every Rare / Epic / Super / Legendary toy.
+      // Each recipe: (a=ctx.audio, v=volume 0..1, w=start offset seconds, vo={p,k})
+      function voiceOf(it) { const h = hash(it.id); return { p: 0.78 + srnd(h, 1) * 0.6, k: Math.floor(srnd(h, 2) * 3) }; }
+      function bell(a, f, d, vol, w) {
+        a.tone(f, d, { type: "sine", vol: vol, when: w });
+        a.tone(f * 2, d * 0.6, { type: "sine", vol: vol * 0.35, when: w });
+        a.tone(f * 3.01, d * 0.35, { type: "sine", vol: vol * 0.12, when: w });
+      }
+      function burst(a, n, lo, hi, d, vol, w, spread, type) {
+        for (let i = 0; i < n; i++) a.tone(lo + Math.random() * (hi - lo), d, { type: type || "sawtooth", vol: vol, when: w + i * spread + Math.random() * spread * 0.5, attack: 0.002 });
+      }
+      function pad(a, f, d, vol, w) {   // 3 detuned sines = soft chord pad
+        [0.995, 1, 1.006].forEach(function (m) { a.tone(f * m, d, { type: "sine", vol: vol, when: w, attack: d * 0.35 }); });
+      }
+      const PENTA = [1, 1.125, 1.25, 1.5, 1.6875, 2, 2.25, 2.5];
       const SND = {
-        crunch: function (a, v, w) {
-          for (let i = 0; i < 10; i++) a.tone(700 + Math.random() * 2200, 0.025, { type: "sawtooth", vol: 0.045 * v, when: w + i * 0.021 + Math.random() * 0.012, attack: 0.002 });
-          a.tone(140, 0.12, { type: "triangle", vol: 0.07 * v, glide: 90, when: w });
+        // ---- families (shaped by voice) ----
+        crunch: function (a, v, w, vo) {
+          burst(a, 8 + vo.k * 3, 600 * vo.p, 2600 * vo.p, 0.025, 0.045 * v, w, 0.02 + vo.k * 0.006);
+          a.tone(140 * vo.p, 0.12, { type: "triangle", vol: 0.07 * v, glide: 90 * vo.p, when: w });
         },
-        ping: function (a, v, w) {
-          [0, 0.07, 0.13].forEach(function (d, i) { a.tone(1500 + i * 220, 0.1, { type: "sine", vol: 0.09 * v, when: w + d, glide: 1900 + i * 200 }); });
+        ping: function (a, v, w, vo) {
+          const pat = [[0, 0.07, 0.13], [0, 0.05, 0.1, 0.15], [0, 0.12]][vo.k];
+          pat.forEach(function (d, i) { a.tone(1500 * vo.p + i * 220, 0.1, { type: "sine", vol: 0.09 * v, when: w + d, glide: (1900 + i * 200) * vo.p }); });
         },
-        bounce: function (a, v, w) {
-          let t = w, d = 0.18, f = 260;
-          for (let i = 0; i < 5; i++) { a.tone(f, d, { type: "sine", vol: Math.max(0.02, 0.16 - i * 0.025) * v, when: t, glide: f * 0.55 }); t += d + 0.02; d *= 0.72; f *= 1.12; }
+        bounce: function (a, v, w, vo) {
+          let t = w, d = 0.18 - vo.k * 0.03, f = 260 * vo.p;
+          for (let i = 0; i < 4 + vo.k; i++) { a.tone(f, d, { type: "sine", vol: Math.max(0.02, 0.16 - i * 0.025) * v, when: t, glide: f * 0.55 }); t += d + 0.02; d *= 0.72; f *= 1.12; }
         },
-        rise: function (a, v, w) {
-          a.tone(150, 0.7, { type: "sine", vol: 0.14 * v, glide: 330, attack: 0.15, when: w });
-          a.tone(300, 0.7, { type: "triangle", vol: 0.03 * v, glide: 660, attack: 0.2, when: w });
+        rise: function (a, v, w, vo) {
+          const d = 0.7 + vo.k * 0.15;
+          a.tone(150 * vo.p, d, { type: "sine", vol: 0.14 * v, glide: 330 * vo.p, attack: 0.15, when: w });
+          a.tone(300 * vo.p, d, { type: "triangle", vol: 0.03 * v, glide: 660 * vo.p, attack: 0.2, when: w });
+          if (vo.k === 2) bell(a, 1046 * vo.p, 0.25, 0.05 * v, w + d * 0.9);
         },
-        pop: function (a, v, w) {
-          a.tone(520, 0.06, { type: "triangle", vol: 0.14 * v, glide: 160, attack: 0.002, when: w });
-          a.tone(1200, 0.03, { type: "sine", vol: 0.05 * v, when: w + 0.005 });
+        pop: function (a, v, w, vo) {
+          for (let i = 0; i <= vo.k; i++) {
+            a.tone(520 * vo.p * (1 + i * 0.15), 0.06, { type: "triangle", vol: 0.14 * v, glide: 160 * vo.p, attack: 0.002, when: w + i * 0.13 });
+            a.tone(1200 * vo.p, 0.03, { type: "sine", vol: 0.05 * v, when: w + i * 0.13 + 0.005 });
+          }
         },
-        popmany: function (a, v, w) {
-          for (let i = 0; i < 6; i++) a.tone(450 + Math.random() * 300, 0.05, { type: "triangle", vol: 0.09 * v, glide: 150, when: w + i * 0.08 + Math.random() * 0.03 });
+        popmany: function (a, v, w, vo) {
+          for (let i = 0; i < 6 + vo.k * 2; i++) a.tone((450 + Math.random() * 300) * vo.p, 0.05, { type: "triangle", vol: 0.09 * v, glide: 150 * vo.p, when: w + i * 0.08 + Math.random() * 0.03 });
         },
-        goo: function (a, v, w) {
-          a.tone(220, 0.35, { type: "sine", vol: 0.12 * v, glide: 90, when: w });
-          a.tone(700, 0.12, { type: "sine", vol: 0.05 * v, glide: 1400, when: w + 0.05 });
-          a.tone(500, 0.1, { type: "sine", vol: 0.04 * v, glide: 1000, when: w + 0.25 });
+        goo: function (a, v, w, vo) {
+          a.tone(220 * vo.p, 0.35, { type: "sine", vol: 0.12 * v, glide: 90 * vo.p, when: w });
+          a.tone(700 * vo.p, 0.12, { type: "sine", vol: 0.05 * v, glide: 1400 * vo.p, when: w + 0.05 });
+          a.tone(500 * vo.p, 0.1, { type: "sine", vol: 0.04 * v, glide: 1000 * vo.p, when: w + 0.25 });
+          if (vo.k >= 1) a.tone(900 * vo.p, 0.08, { type: "sine", vol: 0.04 * v, glide: 1800 * vo.p, when: w + 0.42 });
         },
-        thud: function (a, v, w) { a.tone(110, 0.16, { type: "sine", vol: 0.2 * v, glide: 60, when: w }); },
-        whirr: function (a, v, w) {
-          for (let i = 0; i < 14; i++) a.tone(600 - i * 22, 0.06, { type: "triangle", vol: Math.max(0.01, 0.06 - i * 0.003) * v, when: w + i * 0.045 });
+        thud: function (a, v, w, vo) {
+          a.tone(110 * vo.p, 0.16, { type: "sine", vol: 0.2 * v, glide: 60 * vo.p, when: w });
+          if (vo.k === 1) a.tone(130 * vo.p, 0.12, { type: "sine", vol: 0.12 * v, glide: 60 * vo.p, when: w + 0.2 });
         },
-        stretch: function (a, v, w) {
-          a.tone(180, 0.5, { type: "triangle", vol: 0.1 * v, glide: 420, attack: 0.1, when: w });
-          a.tone(420, 0.2, { type: "sine", vol: 0.07 * v, glide: 200, when: w + 0.5 });
+        whirr: function (a, v, w, vo) {
+          for (let i = 0; i < 14; i++) a.tone(600 * vo.p - i * (22 + vo.k * 6), 0.06, { type: "triangle", vol: Math.max(0.01, 0.06 - i * 0.003) * v, when: w + i * 0.045 });
         },
-        clicks: function (a, v, w) {
-          for (let i = 0; i < 5; i++) a.tone(1800, 0.02, { type: "square", vol: 0.03 * v, when: w + i * 0.09, attack: 0.001 });
+        stretch: function (a, v, w, vo) {
+          a.tone(180 * vo.p, 0.5, { type: "triangle", vol: 0.1 * v, glide: 420 * vo.p, attack: 0.1, when: w });
+          a.tone(420 * vo.p, 0.2, { type: "sine", vol: 0.07 * v, glide: 200 * vo.p, when: w + 0.5 });
+          if (vo.k === 2) a.tone(240 * vo.p, 0.05, { type: "triangle", vol: 0.1 * v, when: w + 0.72 });
         },
-        wobble: function (a, v, w) {
-          for (let i = 0; i < 6; i++) a.tone(i % 2 ? 300 : 420, 0.12, { type: "sine", vol: 0.1 * v, glide: i % 2 ? 420 : 300, when: w + i * 0.1 });
+        clicks: function (a, v, w, vo) {
+          for (let i = 0; i < 5 + vo.k * 2; i++) a.tone(1800 * vo.p, 0.02, { type: "square", vol: 0.03 * v, when: w + i * (0.09 - vo.k * 0.02), attack: 0.001 });
         },
-        squeak: function (a, v, w) {
-          a.tone(900, 0.14, { type: "sawtooth", vol: 0.045 * v, glide: 1500, when: w });
-          a.tone(1500, 0.16, { type: "sawtooth", vol: 0.035 * v, glide: 800, when: w + 0.15 });
+        wobble: function (a, v, w, vo) {
+          for (let i = 0; i < 6 + vo.k * 2; i++) a.tone((i % 2 ? 300 : 420) * vo.p, 0.12, { type: "sine", vol: 0.1 * v, glide: (i % 2 ? 420 : 300) * vo.p, when: w + i * 0.1 });
         },
-        splat: function (a, v, w) {
-          a.tone(120, 0.12, { type: "sine", vol: 0.18 * v, glide: 50, when: w });
-          for (let i = 0; i < 7; i++) a.tone(500 + Math.random() * 900, 0.03, { type: "triangle", vol: 0.04 * v, when: w + 0.03 + i * 0.02 });
+        squeak: function (a, v, w, vo) {
+          a.tone(900 * vo.p, 0.14, { type: "sawtooth", vol: 0.045 * v, glide: 1500 * vo.p, when: w });
+          a.tone((vo.k === 1 ? 1200 : 1500) * vo.p, 0.16, { type: "sawtooth", vol: 0.035 * v, glide: (vo.k === 2 ? 1900 : 800) * vo.p, when: w + 0.15 });
         },
-        chirp: function (a, v, w) {
-          for (let i = 0; i < 4; i++) a.tone(700 + i * 150, 0.08, { type: "sine", vol: 0.08 * v, glide: 1100 + i * 150, when: w + i * 0.09 });
+        splat: function (a, v, w, vo) {
+          a.tone(120 * vo.p, 0.12, { type: "sine", vol: 0.18 * v, glide: 50, when: w });
+          burst(a, 7 + vo.k * 3, 500 * vo.p, 1400 * vo.p, 0.03, 0.04 * v, w + 0.03, 0.02, "triangle");
         },
-        mystery: function (a, v, w) {
-          const keys = Object.keys(SND).filter(function (k) { return k !== "mystery"; });
-          SND[rnd(keys)](a, v, w);
+        chirp: function (a, v, w, vo) {
+          for (let i = 0; i < 4 + vo.k; i++) a.tone((700 + i * 150) * vo.p, 0.08, { type: "sine", vol: 0.08 * v, glide: (1100 + i * 150) * vo.p, when: w + i * 0.09 });
+        },
+        mystery: function (a, v, w, vo) {
+          const keys = Object.keys(SND).filter(function (k) { return k !== "mystery" && k !== "mystery_fidget"; });
+          SND[rnd(keys)](a, v, w, vo);
+        },
+
+        // ---- SIGNATURE sounds: rare ----
+        crunch_cloud: function (a, v, w) {          // fluffy crunch that turns into an airy shimmer
+          burst(a, 7, 500, 1600, 0.03, 0.03 * v, w, 0.03);
+          [1568, 1760, 2093].forEach(function (f, i) { a.tone(f, 0.5, { type: "sine", vol: 0.035 * v, when: w + 0.25 + i * 0.05, attack: 0.15 }); });
+        },
+        crystal_spike: function (a, v, w) {         // glassy bell arpeggio
+          [1318, 1568, 1976, 2637].forEach(function (f, i) { bell(a, f, 0.35, 0.07 * v, w + i * 0.08); });
+        },
+        galaxy_bouncer: function (a, v, w) {        // bounce with a space glide tail
+          SND.bounce(a, v, w, { p: 0.8, k: 1 });
+          a.tone(900, 0.6, { type: "sine", vol: 0.05 * v, glide: 180, when: w + 0.5 });
+          bell(a, 2093, 0.3, 0.03 * v, w + 0.9);
+        },
+        slowrise_cake: function (a, v, w) {         // rise… then the oven timer dings
+          SND.rise(a, v, w, { p: 0.9, k: 0 });
+          bell(a, 1568, 0.4, 0.07 * v, w + 0.75); bell(a, 1568, 0.4, 0.05 * v, w + 0.95);
+        },
+        heart_popit: function (a, v, w) {           // heartbeat: ba-DUM, ba-DUM
+          [0, 0.16, 0.62, 0.78].forEach(function (d, i) { a.tone(i % 2 ? 380 : 300, 0.08, { type: "triangle", vol: (i % 2 ? 0.16 : 0.11) * v, glide: 120, attack: 0.002, when: w + d }); });
+        },
+        glitter_slime: function (a, v, w) {         // goo with glitter ticks
+          SND.goo(a, v, w, { p: 1.1, k: 0 });
+          burst(a, 9, 2500, 4200, 0.03, 0.025 * v, w + 0.1, 0.05, "sine");
+        },
+        magnet_beads: function (a, v, w) {          // chain of clicks snapping faster, then clunk
+          let t = w, step = 0.11; for (let i = 0; i < 9; i++) { a.tone(1900 + i * 60, 0.02, { type: "square", vol: 0.03 * v, when: t, attack: 0.001 }); t += step; step *= 0.78; }
+          a.tone(160, 0.12, { type: "triangle", vol: 0.12 * v, glide: 90, when: t });
+        },
+        tangle_twist: function (a, v, w) {          // twist up, untwist down
+          for (let i = 0; i < 5; i++) a.tone(600 + i * 140, 0.07, { type: "sine", vol: 0.08 * v, glide: 800 + i * 140, when: w + i * 0.07 });
+          for (let i = 0; i < 5; i++) a.tone(1300 - i * 140, 0.07, { type: "sine", vol: 0.07 * v, glide: 1100 - i * 140, when: w + 0.42 + i * 0.07 });
+        },
+        needoh_cube: function (a, v, w) {           // stretch with a wobbly tremolo
+          for (let i = 0; i < 8; i++) a.tone(200 + i * 25 + (i % 2) * 40, 0.09, { type: "triangle", vol: 0.09 * v, when: w + i * 0.07 });
+          a.tone(420, 0.2, { type: "sine", vol: 0.07 * v, glide: 180, when: w + 0.6 });
+        },
+        // ---- epic ----
+        dragon_crunch: function (a, v, w) {         // big crunch + a low growl
+          burst(a, 14, 400, 2200, 0.03, 0.05 * v, w, 0.02);
+          a.tone(70, 0.7, { type: "sawtooth", vol: 0.09 * v, glide: 45, when: w + 0.05, attack: 0.05 });
+          a.tone(120, 0.5, { type: "sawtooth", vol: 0.05 * v, glide: 260, when: w + 0.5 });
+        },
+        neon_urchin: function (a, v, w) {           // electric zaps
+          for (let i = 0; i < 7; i++) a.tone(900 + Math.random() * 2500, 0.035, { type: "square", vol: 0.035 * v, glide: 300, when: w + i * 0.055, attack: 0.001 });
+          a.tone(1800, 0.14, { type: "sine", vol: 0.08 * v, glide: 2600, when: w + 0.4 });
+        },
+        moon_bouncer: function (a, v, w) {          // slow-motion bounce with echoes
+          let t = w, d = 0.34, f = 180;
+          for (let i = 0; i < 5; i++) { a.tone(f, d, { type: "sine", vol: (0.15 - i * 0.025) * v, glide: f * 0.6, when: t }); a.tone(f * 2, d * 0.5, { type: "sine", vol: (0.04 - i * 0.006) * v, when: t + 0.12 }); t += d + 0.06; d *= 0.8; f *= 1.08; }
+        },
+        giant_bun: function (a, v, w) {             // very low, very slow rise… poof
+          a.tone(70, 1.4, { type: "sine", vol: 0.16 * v, glide: 200, attack: 0.5, when: w });
+          a.tone(140, 1.4, { type: "triangle", vol: 0.03 * v, glide: 400, attack: 0.6, when: w });
+          burst(a, 6, 300, 900, 0.05, 0.03 * v, w + 1.3, 0.02, "triangle");
+        },
+        gold_spinner: function (a, v, w) {          // whirr with gold chimes riding it
+          SND.whirr(a, v, w, { p: 1.1, k: 1 });
+          [2093, 2637, 3136, 3951].forEach(function (f, i) { bell(a, f, 0.3, 0.045 * v, w + 0.1 + i * 0.14); });
+        },
+        nebula_slime: function (a, v, w) {          // goo dissolving into a detuned space pad
+          SND.goo(a, v * 0.8, w, { p: 0.85, k: 1 });
+          pad(a, 330, 1.1, 0.05 * v, w + 0.2); pad(a, 495, 1.0, 0.03 * v, w + 0.35);
+        },
+        mood_octopus: function (a, v, w) {          // wobble + a random little 3-note mood melody
+          SND.wobble(a, v * 0.7, w, { p: 1, k: 0 });
+          for (let i = 0; i < 3; i++) bell(a, 660 * rnd(PENTA), 0.22, 0.06 * v, w + 0.55 + i * 0.16);
+        },
+        // ---- super ----
+        crown_cruncher: function (a, v, w) {        // crunch, then a royal fanfare
+          burst(a, 10, 700, 2400, 0.025, 0.045 * v, w, 0.022);
+          [523, 659, 784].forEach(function (f) { a.tone(f, 0.22, { type: "triangle", vol: 0.07 * v, when: w + 0.3 }); });
+          [659, 784, 1046].forEach(function (f) { a.tone(f, 0.45, { type: "triangle", vol: 0.08 * v, when: w + 0.55 }); });
+        },
+        aurora_spike: function (a, v, w) {          // shimmering sliding pings + chord
+          for (let i = 0; i < 6; i++) a.tone(1200 + i * 180, 0.16, { type: "sine", vol: 0.07 * v, glide: 1500 + i * 220, when: w + i * 0.09 });
+          pad(a, 880, 0.9, 0.04 * v, w + 0.5); pad(a, 1320, 0.8, 0.03 * v, w + 0.6);
+        },
+        hyper_bouncer: function (a, v, w) {         // bounces that speed up into a zip
+          let t = w, d = 0.16, f = 300;
+          for (let i = 0; i < 12; i++) { a.tone(f, Math.max(0.03, d), { type: "sine", vol: 0.13 * v, glide: f * 0.6, when: t }); t += d; d *= 0.8; f *= 1.06; }
+          a.tone(600, 0.25, { type: "sine", vol: 0.1 * v, glide: 2400, when: t });
+        },
+        cloud_whale: function (a, v, w) {           // whale song
+          a.tone(140, 1.2, { type: "sine", vol: 0.14 * v, glide: 420, attack: 0.3, when: w });
+          a.tone(420, 0.9, { type: "sine", vol: 0.1 * v, glide: 180, attack: 0.1, when: w + 1.1 });
+          a.tone(60, 1.8, { type: "sine", vol: 0.08 * v, when: w, attack: 0.5 });
+        },
+        prism_cube: function (a, v, w) {            // clicks + a bright prismatic run across octaves
+          SND.clicks(a, v * 0.7, w, { p: 1.2, k: 2 });
+          [523, 659, 784, 1046, 1318, 1568, 2093, 2637].forEach(function (f, i) { bell(a, f, 0.18, 0.05 * v, w + 0.25 + i * 0.05); });
+        },
+        void_putty: function (a, v, w) {            // dark: a drone, a downward whoosh, a lone tick
+          a.tone(55, 1.2, { type: "sawtooth", vol: 0.06 * v, when: w, attack: 0.3 });
+          a.tone(800, 0.7, { type: "sine", vol: 0.07 * v, glide: 60, when: w + 0.1 });
+          a.tone(2400, 0.03, { type: "square", vol: 0.03 * v, when: w + 1.15, attack: 0.001 });
+        },
+        // ---- legendary ----
+        everlasting_crunch: function (a, v, w) {    // crunch in three echoing waves + a choir chord
+          [0, 0.35, 0.7].forEach(function (d, i) { burst(a, 10, 600, 2600, 0.025, (0.045 - i * 0.012) * v, w + d, 0.022); });
+          pad(a, 392, 1.4, 0.04 * v, w + 0.6); pad(a, 494, 1.3, 0.035 * v, w + 0.7); pad(a, 587, 1.2, 0.03 * v, w + 0.8);
+        },
+        starneedle: function (a, v, w) {            // a cascade of twinkling stars
+          for (let i = 0; i < 10; i++) bell(a, 1046 * rnd(PENTA), 0.3, 0.05 * v, w + i * 0.07);
+          a.tone(2600, 0.5, { type: "sine", vol: 0.04 * v, glide: 5200, when: w + 0.7 });
+        },
+        infinity_bouncer: function (a, v, w) {      // bounces that keep going and rise, ending in a chime
+          let t = w, d = 0.14, f = 240;
+          for (let i = 0; i < 16; i++) { a.tone(f, d, { type: "sine", vol: 0.11 * v, glide: f * 0.62, when: t }); t += d + 0.01; f *= 1.07; }
+          [1568, 2093, 2637].forEach(function (f2, i) { bell(a, f2, 0.6, 0.06 * v, t + i * 0.08); });
+        },
+        original_squishy: function (a, v, w) {      // the warmest slow rise, blooming into a chord, with a heartbeat
+          a.tone(120, 1.2, { type: "sine", vol: 0.14 * v, glide: 330, attack: 0.3, when: w });
+          pad(a, 330, 1.4, 0.05 * v, w + 0.5); pad(a, 415, 1.3, 0.045 * v, w + 0.6); pad(a, 494, 1.2, 0.04 * v, w + 0.7);
+          [1.5, 1.66].forEach(function (d, i) { a.tone(i ? 380 : 300, 0.08, { type: "triangle", vol: 0.1 * v, glide: 120, when: w + d }); });
+        },
+        dragon_breath: function (a, v, w) {         // goo + fire crackle + roar
+          SND.goo(a, v * 0.7, w, { p: 0.7, k: 0 });
+          burst(a, 16, 300, 1800, 0.03, 0.03 * v, w + 0.1, 0.045);
+          a.tone(90, 0.9, { type: "sawtooth", vol: 0.08 * v, glide: 240, when: w + 0.4, attack: 0.1 });
+        },
+        mystery_fidget: function (a, v, w) {        // a different legendary voice every time
+          const sig = ["everlasting_crunch", "starneedle", "infinity_bouncer", "original_squishy", "dragon_breath", "cloud_whale", "void_putty", "prism_cube"];
+          SND[rnd(sig)](a, v, w);
         }
       };
       function playToy(it, v, w) {
         if (!ctx) return;
         v = v == null ? 1 : v; w = w || 0;
-        try { SND[it.snd](ctx.audio, v, w); } catch (e) {}
-        const ri = RI[it.rar];
-        if (ri >= 3) ctx.audio.arp([1046, 1318, 1568], { dur: 0.12, step: 0.05, vol: 0.05 * v, type: "sine", when: w + 0.3 });
-        if (ri >= 5) ctx.audio.arp([1568, 2093, 2637, 3136], { dur: 0.16, step: 0.06, vol: 0.05 * v, type: "sine", when: w + 0.55 });
+        const vo = voiceOf(it);
+        try { (SND[it.id] || SND[it.snd])(ctx.audio, v, w, vo); } catch (e) {}
+        if (it.rar === "legendary") ctx.audio.arp([2093, 2637, 3136, 3951], { dur: 0.16, step: 0.06, vol: 0.035 * v, type: "sine", when: w + 0.9 });
       }
       function sndCoin(n) { ctx.audio.arp(n >= 100 ? [880, 1108, 1318, 1760] : [880, 1318], { dur: 0.1, step: 0.05, vol: 0.12, type: "sine" }); }
       function sndClick() { ctx.audio.tone(520, 0.05, { type: "sine", vol: 0.06 }); }
@@ -1019,7 +1171,7 @@
         g.save(); pathRR(lx + S * 0.02, py + ph * 0.66, lw - S * 0.04, ph * 0.14, ph * 0.07); g.fillStyle = "rgba(255,255,255,0.08)"; g.fill();
         pathRR(lx + S * 0.02, py + ph * 0.66, (lw - S * 0.04) * clamp(have / need, 0, 1), ph * 0.14, ph * 0.07); g.fillStyle = ctx.accent; g.shadowColor = ctx.accent; g.shadowBlur = 6; g.fill(); g.restore();
       }
-      const TABS = [["collection", "Collection"], ["shop", "Shop"], ["trade", "Trade"], ["market", "Market"], ["games", "Games"]];
+      const TABS = [["collection", "Collection"], ["shop", "Shop"], ["trade", "Trade"], ["market", "Market"], ["games", "Games"], ["playground", "Play"]];
       function drawTabs() {
         const y = S * 0.105, h = S * 0.06, x0 = S * 0.03, w = S * 0.94 / TABS.length;
         TABS.forEach(function (tb, i) {
@@ -1032,7 +1184,7 @@
           text(label, x + w / 2, y + h / 2, { size: Math.min(S * 0.022, w * 0.15), wt: "700", align: "center", col: active ? ctx.accent : "rgba(230,236,245,0.7)", max: w * 0.9 });
           if (active) { g.save(); g.fillStyle = ctx.accent; g.shadowColor = ctx.accent; g.shadowBlur = 8; pathRR(x + w * 0.3, y + h - 3, w * 0.4, 3, 1.5); g.fill(); g.restore(); }
           if (tb[0] === "trade" && save.bot.on) { g.save(); g.fillStyle = "#7fe0a0"; g.shadowColor = "#7fe0a0"; g.shadowBlur = 6; g.beginPath(); g.arc(x + w - S * 0.018, y + S * 0.014, S * 0.006, 0, TAU); g.fill(); g.restore(); }
-          hit(x, y, w, h, function () { if (mini) { mini = null; } screen = tb[0]; modal = null; sndClick(); });
+          hit(x, y, w, h, function () { if (mini) { mini = null; } if (tb[0] === "playground") { enterPlayground(); sndClick(); return; } screen = tb[0]; modal = null; sndClick(); });
         });
         if (save.market.news && screen !== "market") {
           // thin ticker under the tabs
@@ -1702,12 +1854,285 @@
         g.fillStyle = rg; g.fillRect(0, 0, S, S);
       }
 
+
+      // =====================================================================
+      //  PLAYGROUND — no UI, no text: just your squishies and toys to mess with them
+      // =====================================================================
+      const PG_TOOLS = ["hand", "slide", "tramp", "fan", "magnet", "whirl", "cannon", "stomp", "zerog", "rain"];
+      const PG_LABEL = { hand: "grab & fling", slide: "place a slide", tramp: "place a trampoline", fan: "place a fan", magnet: "hold to attract", whirl: "hold to swirl", cannon: "click to fire a toy", stomp: "click to stomp", zerog: "zero gravity", rain: "drop them all again" };
+      let pg = null;
+
+      function pgToyList() {
+        if (save.inv.length) return save.inv.map(function (x) { return { uid: x.u, it: ITEM[x.id] }; });
+        return [{ uid: -1, it: ITEM.mini_bun }, { uid: -2, it: ITEM.rubber_bouncer }, { uid: -3, it: ITEM.crunch_bead }];
+      }
+      function pgRadius(it) { return S * (0.03 + RI[it.rar] * 0.0045); }
+      function pgFloor() { return S - Math.min(S * 0.058, S * 0.09) * 1.85; }   // toys rest above the tool dock
+      function enterPlayground() {
+        const list = pgToyList();
+        const key = list.map(function (t) { return t.uid; }).join(",") + "@" + S;
+        if (!pg) pg = { tool: "hand", objs: [], zeroG: false, fx: [], key: "", toys: [], grabbed: null, down: false, px: S / 2, py: S / 2, lastPointer: 0, hover: -1 };
+        if (pg.key !== key) {
+          pg.key = key;
+          pg.toys = list.map(function (t, i) { const r = pgRadius(t.it); return { uid: t.uid, it: t.it, r: r, x: S * (0.1 + Math.random() * 0.8), y: -r - Math.random() * S * 0.6 - i * r * 0.4, vx: 0, vy: 0, sq: 0, sqv: 0, lastSnd: -9999, onSlide: 0 }; });
+          pg.objs = [];
+        }
+        pg.grabbed = null; pg.down = false; pg.lastPointer = now;
+        screen = "playground"; modal = null; mini = null; toasts = [];
+      }
+      function pgRain() {
+        pg.toys.forEach(function (t, i) { t.x = S * (0.08 + Math.random() * 0.84); t.y = -t.r - Math.random() * S * 0.5 - i * t.r * 0.3; t.vx = (Math.random() - 0.5) * S * 0.0004; t.vy = 0; });
+        ctx.audio.arp([660, 520, 440], { dur: 0.12, step: 0.06, vol: 0.08, type: "sine" });
+      }
+      function pgSound(t, strength, w) {
+        if (now - t.lastSnd < 160) return;
+        t.lastSnd = now;
+        playToy(t.it, clamp(strength, 0.15, 0.95), w || 0);
+      }
+      function pgImpact(t, sp) {
+        const n = sp / (S * 0.0012);
+        t.sq = Math.min(1, t.sq + clamp(n * 0.7, 0.15, 0.9)); t.sqv = 0;
+        if (n > 0.28) pgSound(t, 0.2 + n * 0.5);
+      }
+      function slidePts(o) {
+        const d = o.dir, x = o.x, y = o.y;
+        return [{ x: x, y: y }, { x: x + d * S * 0.12, y: y + S * 0.14 }, { x: x + d * S * 0.27, y: y + S * 0.21 }, { x: x + d * S * 0.36, y: y + S * 0.17 }];
+      }
+      function trampPts(o) { return [{ x: o.x - S * 0.1, y: o.y }, { x: o.x + S * 0.1, y: o.y }]; }
+      // circle vs segment. e = restitution, fric = tangential keep-ratio, boost = trampoline multiplier
+      function collideSeg(t, a, b, e, fric, boost) {
+        const abx = b.x - a.x, aby = b.y - a.y, L2 = abx * abx + aby * aby;
+        let u = ((t.x - a.x) * abx + (t.y - a.y) * aby) / L2; u = clamp(u, 0, 1);
+        const cx = a.x + abx * u, cy = a.y + aby * u;
+        const dx = t.x - cx, dy = t.y - cy, d = Math.hypot(dx, dy);
+        if (d >= t.r || d === 0) return false;
+        const nx = dx / d, ny = dy / d;
+        t.x = cx + nx * t.r; t.y = cy + ny * t.r;
+        const vn = t.vx * nx + t.vy * ny;
+        if (vn < 0) {
+          t.vx -= (1 + e) * vn * nx; t.vy -= (1 + e) * vn * ny;
+          if (boost && ny < -0.5) { t.vx *= boost; t.vy *= boost; }
+          const tx = -ny, ty = nx, vt = t.vx * tx + t.vy * ty;
+          t.vx -= vt * (1 - fric) * tx; t.vy -= vt * (1 - fric) * ty;
+          if (-vn > S * 0.0003) pgImpact(t, -vn * (boost ? 2 : 1));
+        }
+        return true;
+      }
+      function updatePlayground(dt) {
+        const p = pg; if (!p) return;
+        const G = p.zeroG ? 0 : S * 0.0000022;
+        const vmax = S * 0.0032;
+        const steps = 2, h = dt / steps;
+        for (let s = 0; s < steps; s++) {
+          for (let i = 0; i < p.toys.length; i++) {
+            const t = p.toys[i];
+            if (t === p.grabbed) continue;
+            t.vy += G * h;
+            if (p.down && (p.tool === "magnet" || p.tool === "whirl")) {
+              const dx = p.px - t.x, dy = p.py - t.y, d = Math.max(S * 0.03, Math.hypot(dx, dy));
+              const f = S * 0.0000045 * h * Math.min(3, S * 0.5 / d);
+              if (p.tool === "magnet") { t.vx += dx / d * f; t.vy += dy / d * f - G * h * 0.8; }
+              else { t.vx += (-dy / d) * f * 1.4 + dx / d * f * 0.25; t.vy += (dx / d) * f * 1.4 + dy / d * f * 0.25 - G * h * 0.7; }
+            }
+            for (let k = 0; k < p.objs.length; k++) {
+              const o = p.objs[k];
+              if (o.kind === "fan" && Math.abs(t.x - o.x) < S * 0.075 && t.y < o.y) { t.vy -= (G * 1.8 + S * 0.0000007) * h; t.vx += Math.sin(now * 0.004 + i) * S * 0.0000007 * h; }
+            }
+            const damp = Math.pow(p.zeroG ? 0.99996 : 0.9994, h); t.vx *= damp; t.vy *= damp;
+            const sp = Math.hypot(t.vx, t.vy); if (sp > vmax) { t.vx *= vmax / sp; t.vy *= vmax / sp; }
+            t.x += t.vx * h; t.y += t.vy * h;
+            const e = p.zeroG ? 0.98 : 0.55;
+            if (t.x - t.r < 0) { t.x = t.r; if (t.vx < 0) { pgImpact(t, -t.vx); t.vx = -t.vx * e; } }
+            if (t.x + t.r > S) { t.x = S - t.r; if (t.vx > 0) { pgImpact(t, t.vx); t.vx = -t.vx * e; } }
+            const FL = pgFloor();
+            if (t.y + t.r > FL) { t.y = FL - t.r; if (t.vy > 0) { pgImpact(t, t.vy); t.vy = -t.vy * e; if (Math.abs(t.vy) < S * 0.00015) t.vy = 0; } t.vx *= Math.pow(0.996, h); }
+            if (t.y - t.r < 0 && t.vy < 0 && t.y > -t.r) { t.y = t.r; pgImpact(t, -t.vy); t.vy = -t.vy * e; }
+            for (let k = 0; k < p.objs.length; k++) {
+              const o = p.objs[k];
+              if (o.kind === "slide") {
+                const pts = slidePts(o);
+                for (let q = 0; q < pts.length - 1; q++) if (collideSeg(t, pts[q], pts[q + 1], 0.12, 0.9985)) { if (t.onSlide <= 0) pgSound(t, 0.3); t.onSlide = 250; }
+              } else if (o.kind === "tramp") { const tp = trampPts(o); collideSeg(t, tp[0], tp[1], 0.9, 1, 1.3); }
+            }
+            t.onSlide -= h;
+          }
+          for (let i = 0; i < p.toys.length; i++) for (let j = i + 1; j < p.toys.length; j++) {
+            const a = p.toys[i], b = p.toys[j];
+            const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), md = a.r + b.r;
+            if (d >= md || d === 0) continue;
+            const nx = dx / d, ny = dy / d, ov = (md - d) / 2;
+            const ga = a === p.grabbed, gb = b === p.grabbed;
+            if (!ga) { a.x -= nx * ov * (gb ? 2 : 1); a.y -= ny * ov * (gb ? 2 : 1); }
+            if (!gb) { b.x += nx * ov * (ga ? 2 : 1); b.y += ny * ov * (ga ? 2 : 1); }
+            const vn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+            if (vn < 0) {
+              const jimp = -(1 + 0.65) * vn / 2;
+              if (!ga) { a.vx -= jimp * nx; a.vy -= jimp * ny; }
+              if (!gb) { b.vx += jimp * nx; b.vy += jimp * ny; }
+              if (-vn > S * 0.0004) { pgImpact(a, -vn * 0.8); pgImpact(b, -vn * 0.8); }
+            }
+          }
+        }
+        p.toys.forEach(function (t) { t.sqv += (-t.sq * 0.0009 - t.sqv * 0.011) * dt; t.sq += t.sqv * dt; if (Math.abs(t.sq) < 0.002 && Math.abs(t.sqv) < 0.00005) { t.sq = 0; t.sqv = 0; } });
+        if (p.grabbed) {
+          const t = p.grabbed, k = Math.min(1, dt / 35);
+          const nx = clamp(t.x + (p.px - t.x) * k, t.r, S - t.r), ny = clamp(t.y + (p.py - t.y) * k, t.r, pgFloor() - t.r);
+          const vx = (nx - t.x) / Math.max(1, dt), vy = (ny - t.y) / Math.max(1, dt);
+          t.vx = t.vx * 0.4 + vx * 0.6; t.vy = t.vy * 0.4 + vy * 0.6;
+          t.x = nx; t.y = ny;
+        }
+        p.fx = p.fx.filter(function (f) { f.t += dt; return f.t < f.dur; });
+      }
+      function pgToyAt(x, y) {
+        for (let i = pg.toys.length - 1; i >= 0; i--) { const t = pg.toys[i]; if (Math.hypot(x - t.x, y - t.y) <= t.r * 1.15) return t; }
+        return null;
+      }
+      function pgPlace(kind, x, y) {
+        const p = pg;
+        for (let i = 0; i < p.objs.length; i++) { const o = p.objs[i]; if (o.kind === kind && Math.hypot(o.x - x, o.y - y) < S * 0.07) { p.objs.splice(i, 1); ctx.audio.thunk(); return; } }
+        const same = p.objs.filter(function (o) { return o.kind === kind; });
+        if (same.length >= 4) p.objs.splice(p.objs.indexOf(same[0]), 1);
+        const o = { kind: kind, x: x, y: clamp(y, S * 0.08, pgFloor() - S * 0.03), dir: x < S / 2 ? 1 : -1 };
+        if (kind === "tramp") o.x = clamp(x, S * 0.11, S * 0.89);
+        p.objs.push(o); ctx.audio.place();
+      }
+      function pgPointer(phase, x, y) {
+        const p = pg; if (!p) return;
+        p.px = x; p.py = y; p.lastPointer = now;
+        if (phase === "down") {
+          p.down = true;
+          if (p.tool === "hand") {
+            const t = pgToyAt(x, y);
+            if (t) { p.grabbed = t; p.toys.splice(p.toys.indexOf(t), 1); p.toys.push(t); t.sq = Math.min(1, t.sq + 0.55); t.sqv = 0; t.lastSnd = -9999; pgSound(t, 0.85); }
+          } else if (p.tool === "slide" || p.tool === "tramp" || p.tool === "fan") pgPlace(p.tool, x, y);
+          else if (p.tool === "cannon") {
+            if (!p.toys.length) return;
+            const t = rnd(p.toys); if (t === p.grabbed) p.grabbed = null;
+            const ox = S * 0.07, oy = pgFloor() - S * 0.05;
+            t.x = ox; t.y = oy;
+            const dx = x - ox, dy = y - oy, d = Math.max(1, Math.hypot(dx, dy));
+            const sp = clamp(d * 0.0055, S * 0.0012, S * 0.0032);
+            t.vx = dx / d * sp; t.vy = dy / d * sp; t.sq = 0.7; t.lastSnd = -9999;
+            pgSound(t, 0.9); ctx.audio.thunk();
+            p.fx.push({ kind: "ring", x: ox, y: oy, t: 0, dur: 400, r: S * 0.08, col: ctx.accent });
+          } else if (p.tool === "stomp") {
+            const R = S * 0.17; let n = 0;
+            p.toys.forEach(function (t) {
+              const dx = t.x - x, dy = t.y - y, d = Math.hypot(dx, dy);
+              if (d > R + t.r) return;
+              const k = 1 - clamp(d / (R + t.r), 0, 1);
+              t.sq = 1; t.sqv = 0;
+              t.vx += (d > 1 ? dx / d : 0) * S * 0.0016 * k; t.vy += (d > 1 ? dy / d : 0) * S * 0.0012 * k - S * 0.0011 * k;
+              if (n < 5) { t.lastSnd = -9999; pgSound(t, 0.9, n * 0.07); }
+              n++;
+            });
+            ctx.audio.thunk();
+            p.fx.push({ kind: "ring", x: x, y: y, t: 0, dur: 500, r: R, col: "#ff9fb0" });
+          }
+          return;
+        }
+        if (phase === "up") { p.down = false; p.grabbed = null; }
+      }
+      function pgDock(kind) {
+        const p = pg;
+        if (kind === "zerog") { p.zeroG = !p.zeroG; ctx.audio.tone(p.zeroG ? 300 : 500, 0.2, { type: "sine", vol: 0.08, glide: p.zeroG ? 600 : 250 }); if (p.zeroG) p.toys.forEach(function (t) { t.vy -= S * 0.0004 * (0.5 + Math.random()); }); return; }
+        if (kind === "rain") { pgRain(); return; }
+        p.tool = kind; sndClick();
+      }
+      function pgIcon(kind, x, y, s, col) {
+        g.save(); g.translate(x, y); g.strokeStyle = col; g.fillStyle = col; g.lineWidth = Math.max(1.5, s * 0.1); g.lineCap = "round"; g.lineJoin = "round";
+        const u = s * 0.5;
+        if (kind === "hand") { g.beginPath(); g.moveTo(-u * 0.5, -u * 0.9); g.lineTo(u * 0.6, u * 0.1); g.lineTo(u * 0.05, u * 0.2); g.lineTo(u * 0.35, u * 0.85); g.lineTo(-u * 0.05, u * 0.4); g.lineTo(-u * 0.5, u * 0.7); g.closePath(); g.fill(); }
+        else if (kind === "slide") { g.beginPath(); g.moveTo(-u, -u * 0.8); g.lineTo(-u * 0.4, u * 0.1); g.lineTo(u * 0.4, u * 0.6); g.lineTo(u, u * 0.35); g.stroke(); g.beginPath(); g.arc(-u * 0.75, -u * 0.95, u * 0.22, 0, TAU); g.fill(); }
+        else if (kind === "tramp") { g.beginPath(); g.moveTo(-u, u * 0.2); g.lineTo(u, u * 0.2); g.moveTo(-u * 0.7, u * 0.2); g.lineTo(-u * 0.85, u * 0.9); g.moveTo(u * 0.7, u * 0.2); g.lineTo(u * 0.85, u * 0.9); g.moveTo(0, -u * 0.9); g.lineTo(0, -u * 0.1); g.moveTo(-u * 0.35, -u * 0.55); g.lineTo(0, -u * 0.9); g.lineTo(u * 0.35, -u * 0.55); g.stroke(); }
+        else if (kind === "fan") { for (let i = -1; i <= 1; i++) { g.beginPath(); for (let k = 0; k <= 8; k++) { const yy = u * 0.9 - k / 8 * u * 1.8; const xx = i * u * 0.55 + Math.sin(k * 0.8 + i) * u * 0.18; if (k === 0) g.moveTo(xx, yy); else g.lineTo(xx, yy); } g.stroke(); } }
+        else if (kind === "magnet") { g.lineWidth = Math.max(2, s * 0.18); g.beginPath(); g.arc(0, -u * 0.1, u * 0.65, Math.PI, 0); g.moveTo(-u * 0.65, -u * 0.1); g.lineTo(-u * 0.65, u * 0.7); g.moveTo(u * 0.65, -u * 0.1); g.lineTo(u * 0.65, u * 0.7); g.stroke(); }
+        else if (kind === "whirl") { g.beginPath(); for (let a = 0; a < 4.5 * Math.PI; a += 0.25) { const r = a / (4.5 * Math.PI) * u; const xx = Math.cos(a) * r, yy = Math.sin(a) * r; if (a === 0) g.moveTo(xx, yy); else g.lineTo(xx, yy); } g.stroke(); }
+        else if (kind === "cannon") { g.beginPath(); g.arc(-u * 0.35, u * 0.35, u * 0.5, 0, TAU); g.fill(); g.lineWidth = Math.max(2, s * 0.2); g.beginPath(); g.moveTo(-u * 0.2, u * 0.2); g.lineTo(u * 0.7, -u * 0.7); g.stroke(); g.beginPath(); g.arc(u * 0.85, -u * 0.85, u * 0.12, 0, TAU); g.fill(); }
+        else if (kind === "stomp") { g.beginPath(); g.moveTo(0, -u); g.lineTo(0, u * 0.3); g.moveTo(-u * 0.45, -u * 0.15); g.lineTo(0, u * 0.3); g.lineTo(u * 0.45, -u * 0.15); g.moveTo(-u, u * 0.75); g.lineTo(u, u * 0.75); g.stroke(); }
+        else if (kind === "zerog") { g.beginPath(); g.arc(0, 0, u * 0.45, 0, TAU); g.fill(); g.beginPath(); g.ellipse(0, 0, u, u * 0.35, -0.5, 0, TAU); g.stroke(); }
+        else if (kind === "rain") { g.beginPath(); [[-0.45, -0.3, 0.4], [-0.05, -0.55, 0.45], [0.4, -0.3, 0.4], [0, -0.15, 0.4]].forEach(function (c) { g.moveTo(c[0] * u + c[2] * u, c[1] * u); g.arc(c[0] * u, c[1] * u, c[2] * u, 0, TAU); }); g.fill(); [-0.5, 0, 0.5].forEach(function (d, i) { g.beginPath(); g.moveTo(d * u, u * 0.35 + (i % 2) * u * 0.15); g.lineTo(d * u - u * 0.1, u * 0.85 + (i % 2) * u * 0.15); g.stroke(); }); }
+        g.restore();
+      }
+      function drawPlayground() {
+        const p = pg;
+        // soft floor glow
+        const FL = pgFloor();
+        const fg = g.createLinearGradient(0, FL - S * 0.18, 0, FL);
+        fg.addColorStop(0, "rgba(0,0,0,0)"); fg.addColorStop(1, rgba(ctx.accent, 0.14));
+        g.fillStyle = fg; g.fillRect(0, FL - S * 0.18, S, S * 0.18);
+        g.save(); g.strokeStyle = rgba(ctx.accent, 0.35); g.lineWidth = 1.5; g.shadowColor = ctx.accent; g.shadowBlur = S * 0.012; g.beginPath(); g.moveTo(S * 0.02, FL); g.lineTo(S * 0.98, FL); g.stroke(); g.restore();
+        // objects
+        p.objs.forEach(function (o) {
+          g.save();
+          if (o.kind === "slide") {
+            const pts = slidePts(o);
+            g.lineCap = "round"; g.lineJoin = "round";
+            g.strokeStyle = rgba(ctx.accent, 0.25); g.lineWidth = S * 0.028; g.beginPath(); pts.forEach(function (q, i) { i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }); g.stroke();
+            g.strokeStyle = lighten(ctx.accent, 0.3); g.lineWidth = S * 0.012; g.shadowColor = ctx.accent; g.shadowBlur = S * 0.02; g.stroke();
+            g.shadowBlur = 0; g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = S * 0.003; g.stroke();
+            g.strokeStyle = rgba(ctx.accent, 0.35); g.lineWidth = S * 0.006; g.setLineDash([S * 0.01, S * 0.014]);
+            g.beginPath(); g.moveTo(pts[0].x, pts[0].y); g.lineTo(pts[0].x, FL); g.stroke();
+          } else if (o.kind === "tramp") {
+            const tp = trampPts(o);
+            g.strokeStyle = "rgba(255,255,255,0.25)"; g.lineWidth = S * 0.005; g.beginPath(); g.moveTo(tp[0].x + S * 0.02, o.y); g.lineTo(tp[0].x, FL); g.moveTo(tp[1].x - S * 0.02, o.y); g.lineTo(tp[1].x, FL); g.stroke();
+            g.lineCap = "round"; g.strokeStyle = "#7fe0a0"; g.lineWidth = S * 0.012; g.shadowColor = "#7fe0a0"; g.shadowBlur = S * 0.02; g.beginPath(); g.moveTo(tp[0].x, o.y); g.lineTo(tp[1].x, o.y); g.stroke();
+          } else if (o.kind === "fan") {
+            g.fillStyle = rgba("#74b9ff", 0.9); g.shadowColor = "#74b9ff"; g.shadowBlur = S * 0.02;
+            g.beginPath(); g.arc(o.x, o.y, S * 0.035, Math.PI, 0); g.fill(); g.shadowBlur = 0;
+            g.fillStyle = "rgba(20,30,50,0.8)"; g.beginPath(); g.arc(o.x, o.y, S * 0.012, 0, TAU); g.fill();
+            g.strokeStyle = "rgba(116,185,255,0.22)"; g.lineWidth = S * 0.004; g.lineCap = "round";
+            for (let i = -2; i <= 2; i++) { const xx = o.x + i * S * 0.03; for (let k = 0; k < 6; k++) { const yy = o.y - ((now * 0.00035 + k / 6 + i * 0.1) % 1) * o.y; g.beginPath(); g.moveTo(xx, yy); g.lineTo(xx + Math.sin(yy * 0.05) * S * 0.008, yy - S * 0.03); g.stroke(); } }
+          }
+          g.restore();
+        });
+        // toys
+        p.toys.forEach(function (t) { drawToy(t.x, t.y, t.r, t.it, { sq: t.sq, t: now }); });
+        // fx
+        p.fx.forEach(function (f) {
+          const k = f.t / f.dur;
+          g.save(); g.globalAlpha = 1 - k; g.strokeStyle = f.col; g.lineWidth = S * 0.006 * (1 - k) + 1; g.beginPath(); g.arc(f.x, f.y, f.r * (0.3 + k * 0.9), 0, TAU); g.stroke(); g.restore();
+        });
+        // held-tool cursor
+        if (p.down && (p.tool === "magnet" || p.tool === "whirl")) {
+          g.save(); g.strokeStyle = rgba(ctx.accent, 0.6); g.lineWidth = 2; g.setLineDash([4, 6]); g.lineDashOffset = -now * 0.05;
+          g.beginPath(); g.arc(p.px, p.py, S * 0.05 + Math.sin(now * 0.008) * S * 0.006, 0, TAU); g.stroke(); g.restore();
+        }
+        // dock (icons only; fades when idle) + exit
+        const idle = now - p.lastPointer;
+        const dockA = idle > 2200 ? 0.22 : 1;
+        const n = PG_TOOLS.length, isz = Math.min(S * 0.058, S * 0.9 / n), gap = isz * 0.18;
+        const dw = n * isz + (n - 1) * gap, dx0 = (S - dw) / 2, dy = S - isz * 1.45;
+        g.save(); g.globalAlpha = dockA;
+        pathRR(dx0 - gap, dy - gap, dw + gap * 2, isz + gap * 2, isz * 0.4); g.fillStyle = "rgba(16,13,28,0.75)"; g.fill(); g.strokeStyle = "rgba(255,255,255,0.08)"; g.stroke();
+        g.restore();
+        let hoverKind = null;
+        PG_TOOLS.forEach(function (k, i) {
+          const x = dx0 + i * (isz + gap), active = p.tool === k || (k === "zerog" && p.zeroG);
+          const hov = hovering(x, dy, isz, isz);
+          if (hov) hoverKind = k;
+          g.save(); g.globalAlpha = dockA;
+          if (active || hov) { pathRR(x, dy, isz, isz, isz * 0.3); g.fillStyle = active ? rgba(ctx.accent, 0.3) : "rgba(255,255,255,0.08)"; g.fill(); }
+          pgIcon(k, x + isz / 2, dy + isz / 2, isz * 0.55, active ? "#ffffff" : "rgba(230,236,245,0.75)");
+          g.restore();
+          hit(x, dy, isz, isz, function () { pgDock(k); });
+        });
+        if (hoverKind && S >= 520) text(PG_LABEL[hoverKind], S / 2, dy - isz * 0.45, { size: S * 0.016, align: "center", col: "rgba(230,236,245,0.6)" });
+        const ex = S - S * 0.06, ey = S * 0.06, er = S * 0.026;
+        g.save(); g.globalAlpha = dockA; g.strokeStyle = "rgba(230,236,245,0.6)"; g.lineWidth = 2; g.lineCap = "round";
+        g.beginPath(); g.arc(ex, ey, er, 0, TAU); g.fillStyle = "rgba(16,13,28,0.7)"; g.fill(); g.stroke();
+        g.beginPath(); g.moveTo(ex - er * 0.4, ey - er * 0.4); g.lineTo(ex + er * 0.4, ey + er * 0.4); g.moveTo(ex + er * 0.4, ey - er * 0.4); g.lineTo(ex - er * 0.4, ey + er * 0.4); g.stroke(); g.restore();
+        hit(ex - er * 1.5, ey - er * 1.5, er * 3, er * 3, function () { screen = "collection"; sndClick(); });
+        canvas.style.cursor = p.tool === "hand" ? (pgToyAt(mx, my) ? "grab" : "default") : "crosshair";
+      }
+
       // =====================================================================
       //  MAIN LOOP, INPUT, LIFECYCLE
       // =====================================================================
       function draw() {
         hits = [];
         drawBackground();
+        if (screen === "playground" && pg) { drawPlayground(); drawConfetti(); return; }
         drawTop();
         drawTabs();
         if (mini) { if (mini.kind === "pool") drawPool(); else drawSort(); }
@@ -1729,6 +2154,7 @@
         if (save.bot.on) { botT += dt; if (botT >= BOT_TICK) { botT = 0; botStep(); } }
         if (now - save.shop.t >= SHOP_CYCLE) { restock(false); toast("The shop restocked!", "#7fe0a0"); }
         if (mini) { if (mini.kind === "pool") updatePool(dt); else updateSort(dt); }
+        if (screen === "playground" && pg) updatePlayground(dt);
         if (dirty && now - saveT > 1000) persist();
       }
       function pointerDown(x, y) {
@@ -1737,6 +2163,7 @@
           const h = hits[i];
           if (inRect(h, x, y)) { try { h.fn(); } catch (e) { console.error(e); } return; }
         }
+        if (screen === "playground" && pg && !modal) pgPointer("down", x, y);
       }
 
       return {
@@ -1760,7 +2187,7 @@
           bgDots = [];
           for (let i = 0; i < 40; i++) bgDots.push({ x: Math.random(), y: Math.random(), r: 0.0015 + Math.random() * 0.003, a: 0.05 + Math.random() * 0.15, sp: 0.000003 + Math.random() * 0.000006, ph: Math.random() * 6.28 });
           now = 0; marketT = 0; botT = 0; saveT = 0; toasts = []; confetti = []; squish = {}; modal = null; mini = null; drag = null;
-          screen = "collection"; traderId = null; offer = { mine: [], theirs: [] }; speech = null;
+          screen = "collection"; traderId = null; offer = { mine: [], theirs: [] }; speech = null; pg = null;
           resize();
           load();
           if (!save.intro) modal = { type: "intro" };
@@ -1774,6 +2201,7 @@
             mx = intent.x; my = intent.y;
             if (intent.phase === "down") { if (intent.button === 0) pointerDown(intent.x, intent.y); return; }
             if (mini && mini.kind === "pool" && drag) { poolPointer(intent.phase, intent.x, intent.y); return; }
+            if (screen === "playground" && pg) { pgPointer(intent.phase, intent.x, intent.y); return; }
             return;
           }
           if (intent.type === "dir") {
