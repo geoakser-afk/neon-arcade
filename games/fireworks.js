@@ -153,7 +153,7 @@
           if (p.life <= 0 || p.y > skyBase) parts.splice(i, 1);
         }
         for (let i = flashes.length - 1; i >= 0; i--) { flashes[i].life -= dt / 260; if (flashes[i].life <= 0) flashes.splice(i, 1); }
-        if (parts.length > 1400) parts.splice(0, parts.length - 1400);
+        if (parts.length > 900) parts.splice(0, parts.length - 900);
       }
 
       function draw() {
@@ -174,14 +174,29 @@
           for (let i = 1; i < r.trail.length; i++) { const a = i / r.trail.length; g.strokeStyle = col(r.hue, 80, a * 0.7); g.lineWidth = S * 0.004 * a + 1; g.beginPath(); g.moveTo(r.trail[i - 1].x, r.trail[i - 1].y); g.lineTo(r.trail[i].x, r.trail[i].y); g.stroke(); }
           g.fillStyle = "#ffffff"; g.shadowColor = col(r.hue, 75); g.shadowBlur = S * 0.015; g.beginPath(); g.arc(r.x, r.y, S * 0.006, 0, Math.PI * 2); g.fill(); g.shadowBlur = 0;
         });
-        // particles
-        g.shadowBlur = S * 0.008;
-        parts.forEach(function (p) {
+        // particles — batched: no per-particle shadowBlur (that was the lag). Particles are
+        // grouped into hue x alpha buckets and each bucket is ONE path + ONE fill, drawn twice
+        // ("lighter" composite): a wide faint disc for glow, then the bright core.
+        const buckets = {};
+        for (let i = 0; i < parts.length; i++) {
+          const p = parts[i];
           const a = Math.max(0, Math.min(1, p.life * 1.4)) * (p.tw ? 0.6 + 0.4 * Math.sin(now * 0.03 + p.x) : 1);
-          g.fillStyle = col(p.hue, p.light, a); g.shadowColor = col(p.hue, p.light, a);
-          g.beginPath(); g.arc(p.x, p.y, p.r * (0.5 + p.life * 0.5), 0, Math.PI * 2); g.fill();
-        });
-        g.shadowBlur = 0; g.restore();
+          if (a <= 0.03) continue;
+          const key = ((Math.round(p.hue / 15) * 15) % 360) + "_" + p.light + "_" + Math.min(4, Math.floor(a * 5));
+          (buckets[key] || (buckets[key] = [])).push(p);
+        }
+        const keys = Object.keys(buckets);
+        for (let pass = 0; pass < 2; pass++) {
+          for (let k = 0; k < keys.length; k++) {
+            const parts2 = buckets[keys[k]], bits = keys[k].split("_");
+            const hue = +bits[0], light = +bits[1], a = (+bits[2] + 0.5) / 5;
+            g.fillStyle = col(hue, pass ? light : Math.min(95, light + 10), pass ? a : a * 0.22);
+            g.beginPath();
+            for (let i = 0; i < parts2.length; i++) { const p = parts2[i], r = p.r * (0.5 + p.life * 0.5) * (pass ? 1 : 2.4); g.moveTo(p.x + r, p.y); g.arc(p.x, p.y, r, 0, Math.PI * 2); }
+            g.fill();
+          }
+        }
+        g.restore();
         // skyline (drawn last so fireworks fall behind it)
         buildings.forEach(function (b) { b.win.forEach(function (w) { w.on = Math.sin(now * 0.0007 + w.ph) > -0.6; }); });
         drawSkylineShape(g, buildings, skyBase, S);

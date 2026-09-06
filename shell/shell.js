@@ -201,14 +201,14 @@
     if (!sessionStarted) showSessionSetup();
   }
 
-  // ---- Chris's Games (kid mode) ----
+  // ---- Kids Games (kid mode; for Christopher, 5) ----
   function enterKidMode() {
     audio.unlock();
     kidMode = true;
     sessionStarted = true;           // free play — never show the fuse prompt to a 5-year-old
     timer.noGlobal();
     document.body.classList.add("kid");
-    try { if (location.hash !== "#chris") history.replaceState(null, "", "#chris"); } catch (e) {}
+    try { if (location.hash !== "#kids" && location.hash !== "#chris") history.replaceState(null, "", "#kids"); } catch (e) {}
     audio.arp([523, 659, 784, 1046], { dur: 0.16, step: 0.07, vol: 0.14, type: "sine" });
     toHub();
   }
@@ -239,7 +239,7 @@
     home.title = "back to the grown-up arcade";
     home.appendChild(kidIconCanvas({ kidIcon: drawHomeIcon }, 44));
     home.onclick = exitKidMode;
-    const title = el("div", "kid-title", "Chris's Games");
+    const title = el("div", "kid-title", "Kids Games");
     top.appendChild(home); top.appendChild(title);
     hub.appendChild(top);
     const grid = el("div", "kid-grid");
@@ -301,7 +301,7 @@
     const kidBtn = el("button", "kid-entry");
     kidBtn.appendChild(kidIconCanvas({ kidIcon: drawChrisIcon }, 84));
     const kidTxt = el("div", "kid-entry-text");
-    kidTxt.innerHTML = "<b>Chris's Games</b><span>" + kidGames().length + " games · big pictures · no losing · made for little hands</span>";
+    kidTxt.innerHTML = "<b>Kids Games</b><span>" + kidGames().length + " games · big pictures · no losing · made for little hands</span>";
     kidBtn.appendChild(kidTxt);
     kidBtn.onclick = enterKidMode;
     hub.appendChild(kidBtn);
@@ -553,7 +553,7 @@
   // ---- boot ----
   function boot() {
     build();
-    if (location.hash === "#chris") { kidMode = true; sessionStarted = true; timer.noGlobal(); document.body.classList.add("kid"); }
+    if (location.hash === "#kids" || location.hash === "#chris") { kidMode = true; sessionStarted = true; timer.noGlobal(); document.body.classList.add("kid"); }
     toHub();
   }
 

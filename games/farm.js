@@ -143,15 +143,56 @@
         });
       }
 
-      // each animal's synthesized voice
+      // each animal's synthesized voice — layered sawtooth/triangle "formants" with
+      // pitch bends and vibrato so they read as the real animal, not a beep.
+      function vib(f, dur, opts) {
+        // vibrato: chop a tone into short overlapping segments alternating slightly up/down
+        const A = ctx.audio, seg = 0.045, n = Math.max(1, Math.round(dur / seg));
+        for (let i = 0; i < n; i++) {
+          const wob = 1 + (i % 2 ? 0.035 : -0.035) * (opts.depth || 1);
+          A.tone(f * wob * (opts.bend ? Math.pow(opts.bend, i / n) : 1), seg * 1.3, { type: opts.type || "sawtooth", vol: opts.vol * (opts.fade ? 1 - i / n * 0.7 : 1), when: (opts.when || 0) + i * seg, attack: i === 0 ? (opts.attack || 0.03) : 0.01 });
+        }
+      }
       function voice(kind) {
         const A = ctx.audio;
-        if (kind === "cow") { A.tone(140, 0.6, { type: "sine", vol: 0.2, glide: 110, attack: 0.06 }); A.tone(280, 0.5, { type: "triangle", vol: 0.05, glide: 220, attack: 0.06 }); }
-        else if (kind === "sheep") { for (let i = 0; i < 7; i++) A.tone(i % 2 ? 350 : 300, 0.1, { type: "triangle", vol: 0.11, when: i * 0.065 }); }
-        else if (kind === "duck") { A.tone(440, 0.11, { type: "sawtooth", vol: 0.07, glide: 320 }); A.tone(440, 0.11, { type: "sawtooth", vol: 0.07, glide: 320, when: 0.17 }); }
-        else if (kind === "dog") { A.tone(180, 0.14, { type: "sine", vol: 0.2, glide: 90 }); A.tone(180, 0.14, { type: "sine", vol: 0.2, glide: 90, when: 0.22 }); }
-        else if (kind === "cat") { A.tone(600, 0.22, { type: "sine", vol: 0.14, glide: 900, attack: 0.04 }); A.tone(900, 0.32, { type: "sine", vol: 0.14, glide: 500, when: 0.22 }); }
-        else if (kind === "pig") { A.tone(240, 0.07, { type: "sawtooth", vol: 0.06, glide: 170 }); A.tone(190, 0.06, { type: "sawtooth", vol: 0.05, glide: 140, when: 0.05 }); A.tone(120, 0.2, { type: "sine", vol: 0.16, glide: 80, when: 0.08 }); }
+        if (kind === "cow") {
+          // "mmm-OOOO": low sawtooth swelling up a third then sagging, with a soft nasal octave
+          A.tone(105, 0.35, { type: "sawtooth", vol: 0.07, glide: 130, attack: 0.12 });
+          vib(130, 0.75, { type: "sawtooth", vol: 0.09, when: 0.3, bend: 0.85, depth: 0.8, fade: true });
+          A.tone(210, 0.9, { type: "triangle", vol: 0.05, glide: 175, attack: 0.15, when: 0.25 });
+          A.tone(65, 1.0, { type: "sine", vol: 0.12, glide: 55, attack: 0.2 });
+        } else if (kind === "sheep") {
+          // "b-a-a-a-a": fast wide vibrato on a bright nasal tone, dropping at the end
+          A.tone(120, 0.05, { type: "triangle", vol: 0.1, attack: 0.005 });
+          vib(330, 0.7, { type: "sawtooth", vol: 0.075, when: 0.05, bend: 0.8, depth: 2.2, fade: true });
+          vib(660, 0.6, { type: "triangle", vol: 0.035, when: 0.08, bend: 0.8, depth: 2.2, fade: true });
+        } else if (kind === "duck") {
+          // "QUACK quack quack": buzzy sawtooth honks that bend down, quieter each time
+          [0, 0.2, 0.38].forEach(function (w, i) {
+            A.tone(520, 0.14, { type: "sawtooth", vol: 0.075 - i * 0.015, glide: 300, attack: 0.008, when: w });
+            A.tone(1040, 0.1, { type: "square", vol: 0.02, glide: 700, attack: 0.008, when: w });
+          });
+        } else if (kind === "dog") {
+          // "WOOF woof": a bark = sharp attack, quick fall from mid to low, chesty sub underneath
+          [0, 0.26].forEach(function (w) {
+            A.tone(300, 0.16, { type: "sawtooth", vol: 0.1, glide: 110, attack: 0.006, when: w });
+            A.tone(600, 0.08, { type: "triangle", vol: 0.05, glide: 260, attack: 0.004, when: w });
+            A.tone(95, 0.2, { type: "sine", vol: 0.16, glide: 60, attack: 0.01, when: w });
+          });
+        } else if (kind === "cat") {
+          // "meee-OWWW": rises with light vibrato, then a slow whiny fall
+          vib(520, 0.3, { type: "sawtooth", vol: 0.05, bend: 1.7, depth: 0.6 });
+          vib(880, 0.5, { type: "sawtooth", vol: 0.055, when: 0.3, bend: 0.5, depth: 1.0, fade: true });
+          A.tone(1040, 0.75, { type: "sine", vol: 0.05, glide: 500, attack: 0.1, when: 0.05 });
+        } else if (kind === "pig") {
+          // "OINK oink": a snort (buzzy burst that jumps up then drops) + a low grunt
+          [0, 0.3].forEach(function (w) {
+            A.tone(180, 0.09, { type: "sawtooth", vol: 0.08, glide: 380, attack: 0.005, when: w });
+            A.tone(380, 0.12, { type: "sawtooth", vol: 0.07, glide: 150, attack: 0.005, when: w + 0.08 });
+            for (let i = 0; i < 5; i++) A.tone(600 + Math.random() * 900, 0.03, { type: "square", vol: 0.02, when: w + 0.01 + i * 0.015, attack: 0.002 });
+            A.tone(110, 0.22, { type: "sine", vol: 0.14, glide: 70, attack: 0.02, when: w + 0.06 });
+          });
+        }
       }
 
       function burst(x, y) {

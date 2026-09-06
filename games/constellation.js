@@ -12,7 +12,24 @@
     complexity: "med",
     controls: "drag",
     scoreLabel: "Formed",
+    kidOpts: { kid: true },        // Kids Games: fewer, bigger stars + huge grab radius
+    kidName: "Stars",
+    kidAccent: "#e8dca0",
+    kidIcon(g, s) {
+      // a little constellation: glowing stars joined by lines
+      const pts = [[0.22, 0.7], [0.4, 0.35], [0.6, 0.5], [0.8, 0.25], [0.66, 0.78]].map(function (p) { return [p[0] * s, p[1] * s]; });
+      g.save(); g.lineCap = "round";
+      g.strokeStyle = "rgba(232,220,160,0.75)"; g.lineWidth = s * 0.025; g.shadowColor = "#e8dca0"; g.shadowBlur = s * 0.04;
+      g.beginPath(); pts.forEach(function (p, i) { i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); }); g.stroke();
+      pts.forEach(function (p, i) {
+        const r = s * (0.05 + (i % 2) * 0.02);
+        g.fillStyle = "#fff8d0"; g.shadowBlur = s * 0.06;
+        g.beginPath(); g.moveTo(p[0], p[1] - r); g.quadraticCurveTo(p[0], p[1], p[0] + r, p[1]); g.quadraticCurveTo(p[0], p[1], p[0], p[1] + r); g.quadraticCurveTo(p[0], p[1], p[0] - r, p[1]); g.quadraticCurveTo(p[0], p[1], p[0], p[1] - r); g.fill();
+      });
+      g.restore();
+    },
     create() {
+      let kid = false;
       let stageEl, ctx, canvas, g, unResize = null;
       let cssW = 0, cssH = 0, dpr = 1, reduced = false;
       let accRgb;
@@ -51,7 +68,7 @@
 
       // build a fresh procedural constellation: N stars + a connected edge set
       function newConstellation() {
-        const N = 4 + Math.floor(Math.random() * 4); // 4..7
+        const N = kid ? 3 + Math.floor(Math.random() * 2) : 4 + Math.floor(Math.random() * 4); // kid 3..4, else 4..7
         const margin = 0.16;
         stars = [];
         // place stars with a little spacing
@@ -70,7 +87,7 @@
             x, y,
             vx: (Math.random() - 0.5) * cssW * 0.000012,
             vy: (Math.random() - 0.5) * cssW * 0.000012,
-            r: cssW * (0.010 + Math.random() * 0.006),
+            r: cssW * (kid ? 0.03 + Math.random() * 0.01 : 0.010 + Math.random() * 0.006),
             tw: Math.random() * Math.PI * 2,
             twSpeed: 0.0012 + Math.random() * 0.0018
           });
@@ -110,7 +127,7 @@
       }
 
       function nearestStar(x, y) {
-        let best = -1, bd = cssW * 0.07; // grab radius
+        let best = -1, bd = cssW * (kid ? 0.16 : 0.07); // grab radius (huge for little fingers)
         for (let i = 0; i < stars.length; i++) {
           const d = Math.hypot(stars[i].x - x, stars[i].y - y);
           if (d < bd) { bd = d; best = i; }
@@ -247,6 +264,7 @@
       return {
         mount(stage, c) {
           stageEl = stage; ctx = c;
+          kid = !!(ctx.opts && ctx.opts.kid);
           reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
           accRgb = hexToRgb(ctx.accent || "#e8dca0");
 
