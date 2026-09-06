@@ -16,6 +16,7 @@
   // ---- runtime state ----
   let current = null;      // { def, inst, ctx }
   let sessionStarted = false;
+  let kidMode = false;     // Chris's Games: picture-only hub, free play, kid games only
   let timerUnsub = null;
   let wasLow = false;      // edge-trigger for the "going red" alert
 
@@ -194,9 +195,89 @@
     board.clear();
     backBtn.classList.add("hidden");
     scoreStat.style.display = "none";
+    if (kidMode) { setAccent("#ffb86b"); renderKidHub(); return; }
     setAccent("#6bb8f0");
     renderHub();
     if (!sessionStarted) showSessionSetup();
+  }
+
+  // ---- Chris's Games (kid mode) ----
+  function enterKidMode() {
+    audio.unlock();
+    kidMode = true;
+    sessionStarted = true;           // free play — never show the fuse prompt to a 5-year-old
+    timer.noGlobal();
+    document.body.classList.add("kid");
+    try { if (location.hash !== "#chris") history.replaceState(null, "", "#chris"); } catch (e) {}
+    audio.arp([523, 659, 784, 1046], { dur: 0.16, step: 0.07, vol: 0.14, type: "sine" });
+    toHub();
+  }
+  function exitKidMode() {
+    kidMode = false;
+    document.body.classList.remove("kid");
+    try { if (location.hash) history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    toHub();
+  }
+  // draw a game's picture icon into a canvas (games provide kidIcon(g, size))
+  function kidIconCanvas(g, size) {
+    const c = document.createElement("canvas");
+    c.width = c.height = Math.round(size * (window.devicePixelRatio || 1));
+    c.style.width = c.style.height = size + "px";
+    const cx = c.getContext("2d");
+    cx.setTransform(c.width / size, 0, 0, c.width / size, 0, 0);
+    try { if (g.kidIcon) g.kidIcon(cx, size); } catch (e) { console.error(e); }
+    return c;
+  }
+  function kidGames() {
+    return A.games.filter((g) => g.kid || g.kidOpts);
+  }
+  function renderKidHub() {
+    clear(stage);
+    const hub = el("div", "kid-hub");
+    const top = el("div", "kid-top");
+    const home = el("button", "kid-home", "");
+    home.title = "back to the grown-up arcade";
+    home.appendChild(kidIconCanvas({ kidIcon: drawHomeIcon }, 44));
+    home.onclick = exitKidMode;
+    const title = el("div", "kid-title", "Chris's Games");
+    top.appendChild(home); top.appendChild(title);
+    hub.appendChild(top);
+    const grid = el("div", "kid-grid");
+    kidGames().forEach((g) => {
+      const card = el("button", "kid-card");
+      card.style.setProperty("--card-accent", g.kidAccent || g.accent);
+      card.appendChild(kidIconCanvas(g, 200));
+      const lab = el("div", "kid-label", g.kidName || g.name.replace(/\*/g, ""));
+      card.appendChild(lab);
+      card.onclick = () => { audio.unlock(); audio.tone(660, 0.1, { type: "sine", vol: 0.1, glide: 990 }); launch(g.id, g.kidOpts); };
+      grid.appendChild(card);
+    });
+    hub.appendChild(grid);
+    stage.appendChild(hub);
+  }
+  function drawHomeIcon(g, s) {
+    g.fillStyle = "#ffffff";
+    g.beginPath(); g.moveTo(s * 0.5, s * 0.12); g.lineTo(s * 0.9, s * 0.48); g.lineTo(s * 0.78, s * 0.48); g.lineTo(s * 0.78, s * 0.88); g.lineTo(s * 0.22, s * 0.88); g.lineTo(s * 0.22, s * 0.48); g.lineTo(s * 0.1, s * 0.48); g.closePath(); g.fill();
+    g.fillStyle = "#ffb86b"; g.fillRect(s * 0.42, s * 0.6, s * 0.16, s * 0.28);
+  }
+  function drawChrisIcon(g, s) {
+    // big happy star face — the "Chris's Games" button picture
+    g.save();
+    g.translate(s / 2, s / 2);
+    g.shadowColor = "rgba(255,211,107,0.8)"; g.shadowBlur = s * 0.12;
+    const gr = g.createRadialGradient(-s * 0.1, -s * 0.12, s * 0.05, 0, 0, s * 0.45);
+    gr.addColorStop(0, "#fff3b0"); gr.addColorStop(1, "#ffb84a");
+    g.fillStyle = gr;
+    g.beginPath();
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? s * 0.2 : s * 0.44; i ? g.lineTo(Math.cos(a) * r, Math.sin(a) * r) : g.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+    g.closePath(); g.fill(); g.shadowBlur = 0;
+    g.fillStyle = "#3a2a20";
+    [-1, 1].forEach((d) => { g.beginPath(); g.ellipse(d * s * 0.09, -s * 0.02, s * 0.035, s * 0.045, 0, 0, Math.PI * 2); g.fill(); });
+    g.fillStyle = "#fff"; [-1, 1].forEach((d) => { g.beginPath(); g.arc(d * s * 0.09 - s * 0.012, -s * 0.035, s * 0.013, 0, Math.PI * 2); g.fill(); });
+    g.strokeStyle = "#3a2a20"; g.lineWidth = s * 0.02; g.lineCap = "round";
+    g.beginPath(); g.arc(0, s * 0.05, s * 0.07, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke();
+    g.fillStyle = "rgba(255,110,140,0.35)"; [-1, 1].forEach((d) => { g.beginPath(); g.ellipse(d * s * 0.15, s * 0.06, s * 0.04, s * 0.025, 0, 0, Math.PI * 2); g.fill(); });
+    g.restore();
   }
 
   function renderHub() {
@@ -215,6 +296,15 @@
     const input = search.querySelector("input");
     const clearBtn = search.querySelector(".clear");
     hub.appendChild(search);
+
+    // Chris's Games — one big picture button that opens the kid hub
+    const kidBtn = el("button", "kid-entry");
+    kidBtn.appendChild(kidIconCanvas({ kidIcon: drawChrisIcon }, 84));
+    const kidTxt = el("div", "kid-entry-text");
+    kidTxt.innerHTML = "<b>Chris's Games</b><span>" + kidGames().length + " games · big pictures · no losing · made for little hands</span>";
+    kidBtn.appendChild(kidTxt);
+    kidBtn.onclick = enterKidMode;
+    hub.appendChild(kidBtn);
 
     // pinned games sit up top, bigger and centered
     const pinnedGrid = el("div", "hub-grid pinned");
@@ -259,6 +349,7 @@
       const needle = (q || "").trim().toLowerCase();
       let shown = 0;
       A.games.forEach((g) => {
+        if (g.kid) return;                   // kid-only games live in Chris's hub
         const hay = (g.name + " " + g.tagline + " " + g.controls + " " + g.id)
           .replace(/\*/g, "").toLowerCase();
         if (needle && hay.indexOf(needle) === -1) return;
@@ -334,10 +425,11 @@
   }
 
   // ---- launch a game ----
-  function launch(id) {
+  function launch(id, opts) {
     const def = A.gameById(id);
     if (!def) return;
     if (current) teardownCurrent();
+    launchOpts = opts || null;
 
     audio.unlock();
     clear(stage);
@@ -364,7 +456,7 @@
     if (inst.tick) startRaf(inst);
   }
 
-  let rafId = null, lastT = 0;
+  let rafId = null, lastT = 0, launchOpts = null;
   function startRaf(inst) {
     stopRaf();
     lastT = 0;
@@ -383,6 +475,7 @@
     return {
       audio: audio,
       accent: def.accent,
+      opts: launchOpts || {},      // launch options (e.g. Chris's hub opens Squish straight into Chill)
       board: board,
       storage: storage.game(def.id),
       // game reports its running score to the HUD
@@ -460,11 +553,12 @@
   // ---- boot ----
   function boot() {
     build();
+    if (location.hash === "#chris") { kidMode = true; sessionStarted = true; timer.noGlobal(); document.body.classList.add("kid"); }
     toHub();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 
-  A.shell = { toHub, launch };
+  A.shell = { toHub, launch, enterKidMode, exitKidMode };
 })();

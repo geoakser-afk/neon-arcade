@@ -19,6 +19,25 @@
     complexity: "low",
     controls: "click",
     scoreLabel: "Popped",
+    kidOpts: { mode: "chill" },     // Chris's hub opens straight into Chill (no losing)
+    kidName: "Squish",
+    kidAccent: "#7fe0a0",
+    kidIcon(g, s) {
+      // one giant smiling jelly
+      g.save(); g.translate(s / 2, s / 2);
+      g.shadowColor = "rgba(127,224,160,0.8)"; g.shadowBlur = s * 0.1;
+      const gr = g.createRadialGradient(-s * 0.12, -s * 0.14, s * 0.04, 0, 0, s * 0.42);
+      gr.addColorStop(0, "#d6ffe6"); gr.addColorStop(0.5, "#7fe0a0"); gr.addColorStop(1, "#3fa070");
+      g.fillStyle = gr; g.beginPath();
+      for (let i = 0; i <= 14; i++) { const a = i / 14 * Math.PI * 2, r = s * 0.4 + Math.sin(a * 3) * s * 0.02; i ? g.lineTo(Math.cos(a) * r, Math.sin(a) * r) : g.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+      g.closePath(); g.fill(); g.shadowBlur = 0;
+      g.fillStyle = "rgba(255,255,255,0.45)"; g.beginPath(); g.ellipse(-s * 0.13, -s * 0.16, s * 0.1, s * 0.06, -0.5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#28303a"; [-1, 1].forEach(function (d) { g.beginPath(); g.ellipse(d * s * 0.12, -s * 0.02, s * 0.035, s * 0.045, 0, 0, Math.PI * 2); g.fill(); });
+      g.fillStyle = "#fff"; [-1, 1].forEach(function (d) { g.beginPath(); g.arc(d * s * 0.12 - s * 0.012, -s * 0.035, s * 0.014, 0, Math.PI * 2); g.fill(); });
+      g.fillStyle = "rgba(255,120,150,0.35)"; [-1, 1].forEach(function (d) { g.beginPath(); g.ellipse(d * s * 0.2, s * 0.08, s * 0.05, s * 0.03, 0, 0, Math.PI * 2); g.fill(); });
+      g.strokeStyle = "#28303a"; g.lineWidth = s * 0.02; g.lineCap = "round"; g.beginPath(); g.arc(0, s * 0.07, s * 0.06, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke();
+      g.restore();
+    },
     create() {
       let stageEl, ctx, canvas, g, unResize = null;
       let cssW = 0, cssH = 0, dpr = 1, reduced = false;
@@ -575,6 +594,7 @@
           resize();
           reset("timer");
           phase = "menu";
+          if (ctx.opts && ctx.opts.mode) { reset(ctx.opts.mode); }   // Chris's hub → straight into Chill
           Arcade.input.setPointerTarget(canvas);
           draw();
           unResize = Arcade.board.onResize(function () { resize(); draw(); });

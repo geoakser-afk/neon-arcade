@@ -12,6 +12,16 @@
     complexity: "low",
     controls: "drag",
     scoreLabel: "Strokes",
+    kid: true,
+    kidIcon(g, s) {
+      // a rainbow ribbon squiggle with sparkles
+      g.save(); g.lineCap = "round"; g.lineJoin = "round";
+      const pts = []; for (let i = 0; i <= 30; i++) { const t = i / 30; pts.push({ x: s * 0.12 + t * s * 0.76, y: s * 0.5 + Math.sin(t * Math.PI * 2.2) * s * 0.2, h: t * 300 }); }
+      for (let i = 1; i < pts.length; i++) { const a = pts[i], b = pts[i - 1]; g.strokeStyle = "hsl(" + a.h + ",90%,70%)"; g.shadowColor = g.strokeStyle; g.shadowBlur = s * 0.05; g.lineWidth = s * 0.11; g.beginPath(); g.moveTo(b.x, b.y); g.lineTo(a.x, a.y); g.stroke(); }
+      g.shadowBlur = 0; g.strokeStyle = "rgba(255,255,255,0.5)"; g.lineWidth = s * 0.035; g.beginPath(); pts.forEach(function (p, i) { i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y); }); g.stroke();
+      g.fillStyle = "#fff"; [[0.2, 0.2, 0.05], [0.8, 0.22, 0.04], [0.55, 0.85, 0.045], [0.3, 0.8, 0.03], [0.75, 0.7, 0.035]].forEach(function (q) { const x = q[0] * s, y = q[1] * s, r = q[2] * s; g.beginPath(); g.moveTo(x, y - r); g.quadraticCurveTo(x, y, x + r, y); g.quadraticCurveTo(x, y, x, y + r); g.quadraticCurveTo(x, y, x - r, y); g.quadraticCurveTo(x, y, x, y - r); g.fill(); });
+      g.restore();
+    },
     create() {
       let stageEl, ctx, canvas, g, unResize = null;
       let S = 0, dpr = 1, reduced = false;

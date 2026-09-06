@@ -89,3 +89,40 @@ strobing, or loud.
 - Must be immediately playable and satisfying within a 30–60s round (short-fuse friendly).
 - No crashes in console. Clean teardown (no leaked intervals/listeners — test by entering/leaving twice).
 - Feels calm on routine actions, satisfying (punchy audio + a little bloom) on wins.
+
+
+## Kid games — "Chris's Games" hub (for a 5-year-old who can't read yet)
+The hub has a separate picture-only section for Christopher (George's little brother, kindergarten).
+A game joins it by registering extra fields:
+```js
+Arcade.register({
+  id: "farm", name: "Farm", tagline: "…", accent: "#ffb86b",
+  complexity: "low", controls: "click", scoreLabel: "Taps",
+  kid: true,                        // kid-ONLY: shown in Chris's hub, hidden from the main grid
+  kidIcon(g, s) { /* draw the game's hero picture into an s×s canvas 2d context `g` — NO text */ },
+  kidName: "Farm",                  // optional tiny label under the picture (parents only)
+  kidOpts: { mode: "chill" },       // optional: launch options → available in mount as ctx.opts
+  create() { … }
+});
+```
+A regular game can ALSO appear in Chris's hub without being kid-only by providing `kidIcon` + `kidOpts`
+(Squish does this: `kidOpts: { mode: "chill" }` opens straight into its no-losing mode).
+`ctx.opts` is `{}` when launched from the normal hub.
+
+**Rules for kid games (Ella + George's spec):**
+- **No reading required.** Nothing on screen needs text to understand or play. Tiny labels are fine.
+- **No losing, no timer, no wrong answers, no game over.** Never call `ctx.onGameOver`. Misses do
+  nothing bad (a soft neutral blip at most).
+- **HUGE tap targets** — at least ~12% of the canvas size. Generous hitboxes (1.3–1.5× the visual).
+- **Always something to look at:** gentle idle animation (bobbing, blinking, drifting) so the screen is
+  never static; every tap gives instant visible + audible feedback (squish, bounce, confetti, sparkle).
+- **Happy synthesized sounds** through `ctx.audio` (sine/triangle, pentatonic notes, little arpeggios);
+  keep volumes ≤ 0.2 and rate-limit anything that can be spammed.
+- **Big and bright, but still calm-neon:** saturated pastel characters on the dark background, soft glow.
+  Faces on things — eyes, cheeks, smile — read instantly to a 5-year-old.
+- **Touch first:** `controls: "click"` or `"drag"` only. Everything works with one finger. Set
+  `canvas.style.touchAction = "none"` for drag games.
+- **kidIcon must look like the game:** the same hero/object drawn big and centered, so Chris can find
+  the game by picture alone. Draw it with the same helpers you use in-game.
+- Keep the file self-contained (~250–450 lines), same lifecycle + teardown rules as every other game.
+- A big star counter (★ n) at the top is the whole HUD; also call `ctx.setScore(n)`.

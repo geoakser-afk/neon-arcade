@@ -588,3 +588,61 @@ html, body {
   color: var(--text-faint);
 }
 @media (max-width: 720px) { .ad-slot.live { max-width: 100%; min-height: 100px; } }
+
+
+/* ---- Chris's Games (kid mode): picture-first, giant targets, no reading needed ---- */
+.kid-entry {
+  display: flex; align-items: center; gap: 22px;
+  width: 100%; max-width: 760px; margin: 22px auto 0;
+  padding: 18px 26px;
+  background: linear-gradient(135deg, rgba(255,184,107,0.16), rgba(255,143,208,0.12));
+  border: 2px solid rgba(255,184,107,0.5);
+  border-radius: 28px;
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 0 30px rgba(255,184,107,0.18);
+  transition: transform 120ms, box-shadow 120ms;
+  text-align: left;
+}
+.kid-entry:hover { transform: translateY(-2px); box-shadow: 0 0 44px rgba(255,184,107,0.3); }
+.kid-entry canvas { flex: 0 0 auto; }
+.kid-entry-text b { display: block; font-size: 28px; font-weight: 800; color: #ffd36b; }
+.kid-entry-text span { display: block; font-size: 14px; color: var(--text-dim); margin-top: 4px; }
+
+.kid-hub { width: 100%; max-width: 1200px; margin: 0 auto; padding: 10px 16px 40px; overflow-y: auto; max-height: 100%; align-self: flex-start; }
+.kid-top { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; }
+.kid-home {
+  width: 76px; height: 76px; border-radius: 24px; border: 2px solid rgba(255,184,107,0.5);
+  background: rgba(255,184,107,0.14); cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.kid-home:hover { background: rgba(255,184,107,0.26); }
+.kid-title { font-size: 40px; font-weight: 800; color: #ffd36b; text-shadow: 0 0 22px rgba(255,211,107,0.5); }
+.kid-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 22px; }
+.kid-card {
+  --card-accent: #ffb86b;
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 30px;
+  border: 3px solid color-mix(in srgb, var(--card-accent) 70%, white 10%);
+  background:
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--card-accent) 45%, transparent), transparent 70%),
+    color-mix(in srgb, var(--card-accent) 18%, #0b0a14);
+  box-shadow: 0 0 30px color-mix(in srgb, var(--card-accent) 35%, transparent);
+  cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 14px;
+  transition: transform 120ms, box-shadow 120ms;
+}
+.kid-card:hover, .kid-card:active { transform: scale(1.04); box-shadow: 0 0 50px color-mix(in srgb, var(--card-accent) 60%, transparent); }
+.kid-card canvas { width: 78% !important; height: 78% !important; }
+.kid-label { font-size: 15px; font-weight: 700; color: rgba(230,236,245,0.6); letter-spacing: 0.3px; }
+body.kid .back-btn { font-size: 22px; padding: 14px 26px; border-radius: 20px; border-width: 2px; }
+body.kid .hub-search, body.kid .hub-title { display: none; }
+@media (max-width: 720px) {
+  .kid-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .kid-title { font-size: 28px; }
+  .kid-home { width: 60px; height: 60px; }
+  .kid-entry { padding: 14px 18px; gap: 14px; }
+  .kid-entry-text b { font-size: 22px; }
+  body.kid .back-btn { font-size: 18px; padding: 10px 18px; }
+}

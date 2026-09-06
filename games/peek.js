@@ -12,6 +12,28 @@
     complexity: "low",
     controls: "click",
     scoreLabel: "Taps",
+    kid: true,
+    kidIcon(g, s) {
+      // a bunny peeking out of a burrow
+      g.save(); g.translate(s / 2, s * 0.52);
+      const r = s * 0.24;
+      g.fillStyle = "rgba(60,44,70,0.95)"; g.beginPath(); g.ellipse(0, r * 0.9, r * 1.7, r * 0.7, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "rgba(8,6,14,0.95)"; g.beginPath(); g.ellipse(0, r * 0.9, r * 1.5, r * 0.55, 0, 0, Math.PI * 2); g.fill();
+      g.save(); g.beginPath(); g.rect(-r * 3, -r * 3, r * 6, r * 3.9); g.clip();
+      g.shadowColor = "#ffd6e7"; g.shadowBlur = r * 0.5;
+      const gr = g.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r * 1.2); gr.addColorStop(0, "#ffffff"); gr.addColorStop(0.25, "#ffd6e7"); gr.addColorStop(1, "#ffb3d1");
+      g.fillStyle = gr;
+      [-1, 1].forEach(function (d) { g.beginPath(); g.ellipse(d * r * 0.45, -r * 1.05, r * 0.22, r * 0.62, d * 0.15, 0, Math.PI * 2); g.fill(); });
+      g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill(); g.shadowBlur = 0;
+      g.fillStyle = "#3a2a44"; [-1, 1].forEach(function (d) { g.beginPath(); g.ellipse(d * r * 0.38, -r * 0.1, r * 0.17, r * 0.21, 0, 0, Math.PI * 2); g.fill(); });
+      g.fillStyle = "#fff"; [-1, 1].forEach(function (d) { g.beginPath(); g.arc(d * r * 0.38 - r * 0.06, -r * 0.18, r * 0.07, 0, Math.PI * 2); g.fill(); });
+      g.fillStyle = "rgba(255,110,140,0.4)"; [-1, 1].forEach(function (d) { g.beginPath(); g.ellipse(d * r * 0.6, r * 0.25, r * 0.18, r * 0.11, 0, 0, Math.PI * 2); g.fill(); });
+      g.strokeStyle = "#3a2a44"; g.lineWidth = r * 0.06; g.lineCap = "round"; g.beginPath(); g.arc(0, r * 0.28, r * 0.2, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke();
+      g.restore();
+      const lip = g.createLinearGradient(0, r * 0.9, 0, r * 1.6); lip.addColorStop(0, "rgba(90,70,100,0.95)"); lip.addColorStop(1, "rgba(50,38,60,0.95)");
+      g.fillStyle = lip; g.beginPath(); g.ellipse(0, r * 1.0, r * 1.7, r * 0.7, 0, 0, Math.PI); g.fill();
+      g.restore();
+    },
     create() {
       let stageEl, ctx, canvas, g, unResize = null;
       let S = 0, dpr = 1, reduced = false;
