@@ -28,6 +28,7 @@
     },
     create() {
       let kid = false, bumpT = 0;
+      let pickups = [], starsGot = 0;   // kid mode: glowing stars to fly through
       let stageEl, ctx, canvas, g, unResize = null;
       let cssW = 0, cssH = 0, dpr = 1, reduced = false;
 
@@ -75,7 +76,7 @@
       // WORLD px ahead of the camera. Difficulty: tighter gaps, more boosts/slides,
       // longer, as level climbs (endless past the hand-made count).
       function levelParams(n) {
-        if (kid) return { count: 9, gap: bandH() * 0.5, spacing: cssW * 0.34, boostP: 0.12, slideP: 0.12 };
+        if (kid) return { len: cssW * 4.6, gap: bandH() * 0.5, spacing: cssW * 0.36, boostChance: 0.28, slideChance: 0.22 };
         return {
           len: 9000 + n * 1400,                       // world px length
           gap: Math.max(bandH() * 0.26, bandH() * 0.5 - n * bandH() * 0.03),
@@ -86,7 +87,7 @@
       }
 
       function buildLevel(n) {
-        obstacles = [];
+        obstacles = []; pickups = [];
         const p = levelParams(n);
         levelLen = p.len;
         let x = cssW * 0.9;                            // first obstacle a bit in
@@ -108,6 +109,11 @@
           } else {
             obstacles.push({ x: x, w: cssW * 0.05, gapY: gy, gap: p.gap, kind: "gate" });
           }
+          if (kid) {
+            // a star (or two) floating in the safe gap, plus one between obstacles
+            pickups.push({ x: x + cssW * 0.02, y: gy + (Math.random() - 0.5) * p.gap * 0.4, got: false, ph: Math.random() * 6.28 });
+            pickups.push({ x: x + p.spacing * 0.55, y: bandTop() + bandH() * (0.25 + Math.random() * 0.5), got: false, ph: Math.random() * 6.28 });
+          }
           x += p.spacing + Math.random() * cssW * 0.15;
         }
       }
@@ -120,7 +126,7 @@
         trail = []; particles = [];
         boostT = 0; slideT = 0; progress = 0;
         buildLevel(n);
-        ctx.setScore(level);
+        ctx.setScore(kid ? starsGot : level);
       }
 
       function beginPlay() { if (phase === "intro") phase = "play"; }
@@ -205,7 +211,7 @@
           if (screenX + o.w < px - hit || screenX > px + hit) continue; // wave not in this obstacle's column
           const top = o.gapY - o.gap / 2, bot = o.gapY + o.gap / 2;
           if (o.kind === "boost") {
-            if (!o.used && y > top && y < bot) { o.used = true; boostT = 900; ctx.audio.tone(720, 0.1, { type: "sine", vol: 0.08, glide: 1100 }); }
+            if (!o.used && y > top && y < bot) { o.used = true; boostT = kid ? 1300 : 900; ctx.audio.tone(720, 0.1, { type: "sine", vol: 0.08, glide: 1100 }); if (kid) { starsGot++; ctx.setScore(starsGot); ctx.audio.arp([880, 1320, 1760], { dur: 0.1, step: 0.05, vol: 0.1 }); for (let i = 0; i < 14; i++) { const a = Math.random() * 6.28, sp2 = cssW * (0.03 + Math.random() * 0.1); particles.push({ x: px, y: y, vx: Math.cos(a) * sp2, vy: Math.sin(a) * sp2, life: 1 }); } } }
             // boost pad: hitting its solid frame (outside the gap) still kills
             if (y < top || y > bot) { if (kid) bump(top, bot); else { die(); return; } }
           } else if (o.kind === "slide") {
@@ -217,6 +223,19 @@
           }
         }
 
+        if (kid) {
+          const sr = cssH * 0.05;
+          for (const s of pickups) {
+            if (s.got) continue;
+            const sx = s.x - camX;
+            if (Math.abs(sx - px) < sr * 1.4 && Math.abs(y - s.y) < sr * 1.6) {
+              s.got = true; starsGot++; ctx.setScore(starsGot);
+              ctx.audio.tone(1046 + (starsGot % 5) * 120, 0.16, { type: "sine", vol: 0.12, glide: 1568 + (starsGot % 5) * 120 });
+              for (let i = 0; i < 12; i++) { const a = Math.random() * 6.28, sp2 = cssW * (0.02 + Math.random() * 0.08); particles.push({ x: px, y: s.y, vx: Math.cos(a) * sp2, vy: Math.sin(a) * sp2, life: 1 }); }
+              if (starsGot % 10 === 0) ctx.audio.arp([784, 1046, 1318, 1568], { dur: 0.16, step: 0.07, vol: 0.12 });
+            }
+          }
+        }
         if (progress >= 1) { clearLevel(); return; }
       }
 
@@ -318,6 +337,21 @@
         }
         g.globalAlpha = 1;
 
+        // kid mode: star pickups + big ★ counter
+        if (kid) {
+          const sr = cssH * 0.05;
+          for (const s of pickups) {
+            if (s.got) continue;
+            const sx = s.x - camX; if (sx < -sr || sx > cssW + sr) continue;
+            const tw = 0.85 + 0.15 * Math.sin(performance.now() * 0.006 + s.ph);
+            g.save(); g.translate(sx, s.y); g.rotate(Math.sin(performance.now() * 0.002 + s.ph) * 0.2); g.scale(tw, tw);
+            g.fillStyle = "#ffd36b"; g.shadowColor = "#ffd36b"; g.shadowBlur = sr * 0.6;
+            g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? sr * 0.45 : sr; i ? g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); } g.closePath(); g.fill();
+            g.restore();
+          }
+          g.save(); g.textAlign = "left"; g.textBaseline = "middle"; g.fillStyle = "#ffd36b"; g.shadowColor = "rgba(255,211,107,0.6)"; g.shadowBlur = 14;
+          g.font = "800 " + Math.round(cssW * 0.055) + "px system-ui, sans-serif"; g.fillText("★ " + starsGot, cssW * 0.04, cssH * 0.1); g.restore();
+        }
         // progress bar
         g.fillStyle = "rgba(255,255,255,0.12)"; g.fillRect(cssW * 0.1, cssH * 0.03, cssW * 0.8, 5);
         g.fillStyle = acc(0.85); g.fillRect(cssW * 0.1, cssH * 0.03, cssW * 0.8 * progress, 5);
@@ -327,7 +361,7 @@
         // ---- overlays ----
         if (phase === "menu") drawMenu();
         else if (phase === "intro") drawCard(["LEVEL " + level, "Hold to rise · release to dive", "Cyan = boost · amber = slide rail. Click anywhere to begin."]);
-        else if (phase === "clear") drawCard(["LEVEL " + level, "CLEAR", "Nice line. Click for the next level."]);
+        else if (phase === "clear") drawCard(kid ? ["★ " + starsGot, "YAY!", ""] : ["LEVEL " + level, "CLEAR", "Nice line. Click for the next level."]);
       }
 
       function fillPipes(scr, w, top, bot, rgb) {
@@ -421,8 +455,8 @@
           maxLevel = Math.max(1, ctx.storage.get("maxWave", 1));
           resize();
           phase = "menu"; over = false; held = false; obstacles = []; particles = []; trail = []; y = cssH * 0.5; camX = 0;
-          kid = !!(ctx.opts && ctx.opts.mode === "kid");
-          if (kid) { startLevel(1); phase = "play"; }   // Kids Games: no menu, no intro card, just fly
+          kid = !!(ctx.opts && ctx.opts.mode === "kid"); starsGot = 0;
+          if (kid) { startLevel(1); phase = "play"; ctx.setScore(0); }   // Kids Games: no menu, no intro card, just fly
           Arcade.input.setPointerTarget(canvas);
           draw();
           unResize = Arcade.board.onResize(function () { resize(); draw(); });
@@ -452,7 +486,7 @@
           if (unResize) unResize();
           unResize = null;
           stageEl = ctx = canvas = g = null;
-          obstacles = trail = particles = null;
+          obstacles = trail = particles = null; pickups = [];
         }
       };
       return self;

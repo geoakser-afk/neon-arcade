@@ -143,6 +143,17 @@
         });
       }
 
+      // browser speech (no files, no network): says the noise AND the animal, so it's unmistakable
+      const NOISE = { cow: "Moo! Cow.", sheep: "Baa! Sheep.", duck: "Quack quack! Duck.", dog: "Woof woof! Dog.", cat: "Meow! Cat.", pig: "Oink oink! Pig." };
+      function speak(kind) {
+        try {
+          if (!window.speechSynthesis) return;
+          window.speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(NOISE[kind]);
+          u.lang = "en-US"; u.rate = 0.9; u.pitch = kind === "cow" || kind === "dog" ? 0.8 : 1.25; u.volume = 1;
+          window.speechSynthesis.speak(u);
+        } catch (e) {}
+      }
       // each animal's synthesized voice — layered sawtooth/triangle "formants" with
       // pitch bends and vibrato so they read as the real animal, not a beep.
       function vib(f, dur, opts) {
@@ -206,7 +217,7 @@
       function tap(a) {
         taps++; ctx.setScore(taps);
         a.sq = 1;
-        if (now - a.lastVoice > 220) { a.lastVoice = now; voice(a.kind); }
+        if (now - a.lastVoice > 220) { a.lastVoice = now; voice(a.kind); setTimeout(function () { if (ctx) speak(a.kind); }, 350); }
         const n = reduced ? 3 : 6;
         for (let i = 0; i < n; i++) {
           floaties.push({ x: a.x + (Math.random() - 0.5) * a.r * 1.4, y: a.y - a.r * 0.6, vx: (Math.random() - 0.5) * S * 0.00008, vy: -S * (0.00018 + Math.random() * 0.00012),
@@ -293,6 +304,7 @@
         tick(dt) { update(Math.min(50, dt)); draw(); },
         getScore() { return taps; },
         teardown() {
+          try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
           if (unResize) unResize(); unResize = null;
           stageEl = ctx = canvas = g = null; animals = []; floaties = []; confetti = [];
         }

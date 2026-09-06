@@ -38,6 +38,7 @@
       let marbles = [];
       let tool = "rampR";
       let racing = false, raceT = 0, finished = [], winner = null, winT = 0;
+      let pending = [], pendT = 0;   // auto-build queue: pieces appear one by one
       let confetti = [], fx = [];
       let lastRoll = -9999;
       const TAU = Math.PI * 2;
@@ -55,6 +56,32 @@
       function marbleR() { return S * 0.032; }
       function goBtn() { return { x: S * 0.5, y: S * 0.065, r: S * 0.05 }; }
       function clearBtn() { return { x: S * 0.9, y: S * 0.065, r: S * 0.036 }; }
+      function wandBtn() { return { x: S * 0.7, y: S * 0.065, r: S * 0.04 }; }
+      // the magic wand: builds a whole random course for him, piece by piece
+      function autoBuild() {
+        if (racing) return;
+        const b = boardRect();
+        pieces = []; pending = []; pendT = 0; resetMarbles();
+        const rows = 4 + Math.floor(Math.random() * 2);
+        let dir = Math.random() < 0.5 ? 1 : -1;
+        for (let i = 0; i < rows; i++) {
+          const y = b.y + b.h * (0.16 + (i / (rows - 1)) * 0.68);
+          const roll = Math.random();
+          if (i === rows - 1 && Math.random() < 0.6) {
+            pending.push({ kind: "tramp", x: S * (0.3 + Math.random() * 0.4), y: y, dir: 1 });
+          } else if (roll < 0.55) {
+            // zig-zag ramp: alternate sides so marbles slalom down
+            pending.push({ kind: dir > 0 ? "rampR" : "rampL", x: S * (dir > 0 ? 0.3 : 0.7) + (Math.random() - 0.5) * S * 0.1, y: y, dir: dir });
+            dir = -dir;
+          } else if (roll < 0.8) {
+            pending.push({ kind: "bumper", x: S * (0.3 + Math.random() * 0.4), y: y, dir: 1 });
+            if (Math.random() < 0.5) pending.push({ kind: "bumper", x: S * (0.15 + Math.random() * 0.15) + (Math.random() < 0.5 ? S * 0.55 : 0), y: y + S * 0.02, dir: 1 });
+          } else {
+            pending.push({ kind: "spinner", x: S * (0.35 + Math.random() * 0.3), y: y, dir: 1 });
+          }
+        }
+        ctx.audio.arp([784, 1046, 1318, 1568], { dur: 0.14, step: 0.06, vol: 0.12, type: "sine" });
+      }
       function traySlots() {
         const n = KINDS.length, w = S * 0.14, x0 = (S - n * w) / 2 + w / 2;
         return KINDS.map(function (k, i) { return { kind: k, x: x0 + i * w, y: trayY(), w: w }; });
@@ -136,6 +163,16 @@
         for (let i = confetti.length - 1; i >= 0; i--) { const c = confetti[i]; c.vy += S * 0.0000015 * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.life -= dt / 1400; if (c.life <= 0) confetti.splice(i, 1); }
         for (let i = fx.length - 1; i >= 0; i--) { fx[i].t += dt; if (fx[i].t > fx[i].dur) fx.splice(i, 1); }
         if (winner != null) winT += dt;
+        if (pending.length) {
+          pendT -= dt;
+          if (pendT <= 0) {
+            const q = pending.shift(); pendT = 190;
+            pieces.push({ kind: q.kind, x: q.x, y: q.y, dir: q.dir, spin: 0, hit: 1 });
+            fx.push({ kind: "ring", x: q.x, y: q.y, t: 0, dur: 320, r: pieceLen() * 0.5, col: KCOL[q.kind] });
+            for (let i = 0; i < 6; i++) { const a = Math.random() * TAU, sp = S * (0.0002 + Math.random() * 0.0004); confetti.push({ x: q.x, y: q.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.7, r: S * 0.004, col: "#ffffff" }); }
+            ctx.audio.tone(600 + pieces.length * 60, 0.1, { type: "sine", vol: 0.09, glide: 900 + pieces.length * 60 });
+          }
+        }
         if (!racing) return;
         raceT += dt;
         const b = boardRect(), G = S * 0.0000024, vmax = S * 0.0028;
@@ -279,6 +316,17 @@
         g.save(); g.shadowColor = "#7fe0a0"; g.shadowBlur = S * 0.02 + pulse * S * 0.02;
         g.fillStyle = racing ? "rgba(127,224,160,0.35)" : "#7fe0a0"; g.beginPath(); g.arc(gb.x, gb.y, gb.r * (1 + pulse * 0.06), 0, TAU); g.fill(); g.shadowBlur = 0;
         g.fillStyle = "#0b1a12"; g.beginPath(); g.moveTo(gb.x - gb.r * 0.3, gb.y - gb.r * 0.42); g.lineTo(gb.x + gb.r * 0.48, gb.y); g.lineTo(gb.x - gb.r * 0.3, gb.y + gb.r * 0.42); g.closePath(); g.fill();
+        const wb = wandBtn(), wp = 0.5 + 0.5 * Math.sin(now * 0.005);
+        g.fillStyle = "rgba(255,211,107,0.14)"; g.shadowColor = "#ffd36b"; g.shadowBlur = S * 0.012 + wp * S * 0.012; g.beginPath(); g.arc(wb.x, wb.y, wb.r, 0, TAU); g.fill(); g.shadowBlur = 0;
+        g.strokeStyle = "rgba(255,211,107,0.7)"; g.lineWidth = 2; g.stroke();
+        g.save(); g.translate(wb.x, wb.y); g.rotate(-0.7);
+        g.strokeStyle = "#e6d3ff"; g.lineWidth = Math.max(3, S * 0.008); g.lineCap = "round"; g.beginPath(); g.moveTo(-wb.r * 0.55, wb.r * 0.4); g.lineTo(wb.r * 0.25, -wb.r * 0.15); g.stroke();
+        g.fillStyle = "#ffd36b"; g.shadowColor = "#ffd36b"; g.shadowBlur = S * 0.01;
+        const sr = wb.r * (0.32 + wp * 0.06); g.beginPath();
+        for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? sr * 0.45 : sr; i ? g.lineTo(wb.r * 0.42 + Math.cos(a) * rr, -wb.r * 0.32 + Math.sin(a) * rr) : g.moveTo(wb.r * 0.42 + Math.cos(a) * rr, -wb.r * 0.32 + Math.sin(a) * rr); }
+        g.closePath(); g.fill(); g.shadowBlur = 0;
+        g.fillStyle = "#fff"; [[-0.1, -0.7], [0.75, 0.1], [0.1, -0.05]].forEach(function (q) { g.beginPath(); g.arc(q[0] * wb.r, q[1] * wb.r, wb.r * 0.06 + wp * wb.r * 0.03, 0, TAU); g.fill(); });
+        g.restore();
         const cb = clearBtn();
         g.fillStyle = "rgba(255,255,255,0.08)"; g.beginPath(); g.arc(cb.x, cb.y, cb.r, 0, TAU); g.fill();
         g.strokeStyle = "rgba(230,236,245,0.8)"; g.lineWidth = Math.max(2, S * 0.005); g.lineCap = "round";
@@ -318,10 +366,10 @@
           g = canvas.getContext("2d");
           wrap.appendChild(canvas);
           const hint = document.createElement("div"); hint.className = "hint";
-          hint.textContent = "Pick a piece, tap the board to place it (tap a piece to remove) · press ▶ to race the marbles";
+          hint.textContent = "Pick a piece, tap the board to place it (tap a piece to remove) · ✦ wand builds a course for you · ▶ races the marbles";
           wrap.appendChild(hint);
           stage.appendChild(wrap);
-          now = 0; races = 0; confetti = []; fx = []; tool = "rampR"; S = 0;
+          now = 0; races = 0; confetti = []; fx = []; tool = "rampR"; S = 0; pending = [];
           resize(); defaultCourse(); resetMarbles();
           ctx.setScore(0);
           Arcade.input.setPointerTarget(canvas);
@@ -332,7 +380,8 @@
           if (intent.type !== "point" || intent.phase !== "down" || intent.button !== 0) return;
           const x = intent.x, y = intent.y;
           const gb = goBtn(); if (Math.hypot(x - gb.x, y - gb.y) < gb.r * 1.3) { startRace(); return; }
-          const cb = clearBtn(); if (Math.hypot(x - cb.x, y - cb.y) < cb.r * 1.4) { pieces = []; resetMarbles(); ctx.audio.tone(400, 0.12, { type: "sine", vol: 0.08, glide: 200 }); return; }
+          const wb = wandBtn(); if (Math.hypot(x - wb.x, y - wb.y) < wb.r * 1.3) { autoBuild(); return; }
+          const cb = clearBtn(); if (Math.hypot(x - cb.x, y - cb.y) < cb.r * 1.4) { pieces = []; pending = []; resetMarbles(); ctx.audio.tone(400, 0.12, { type: "sine", vol: 0.08, glide: 200 }); return; }
           const slot = traySlots().find(function (sl) { return Math.abs(x - sl.x) < sl.w / 2 && Math.abs(y - sl.y) < S * 0.06; });
           if (slot) { tool = slot.kind; ctx.audio.tone(660, 0.08, { type: "sine", vol: 0.08, glide: 880 }); return; }
           const b = boardRect();
