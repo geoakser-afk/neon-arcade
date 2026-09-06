@@ -204,7 +204,7 @@
           if (p.wob > 0) p.wob = Math.max(0, p.wob - dt / 700);
           if (p.y > S + p.r * 1.5) planets.splice(i, 1);
         }
-        for (let i = parts.length - 1; i >= 0; i--) { const q = parts[i]; q.x += q.vx * dt; q.y += q.vy * dt + speed * 0.5 * dt; q.vy *= Math.pow(0.998, dt); q.r += dt * S * 0.00002; q.life -= dt / (q.smoke ? 1100 : 450); if (q.life <= 0) parts.splice(i, 1); }
+        for (let i = parts.length - 1; i >= 0; i--) { const q = parts[i]; q.x += q.vx * dt; q.y += q.vy * dt + speed * 0.5 * dt; q.vy *= Math.pow(0.998, dt); q.r = Math.min(q.r + dt * S * 0.00002, S * 0.04); q.life -= dt / (q.smoke ? 1100 : 450); if (q.life <= 0) parts.splice(i, 1); }
         for (let i = rings.length - 1; i >= 0; i--) { rings[i].life -= dt / 600; if (rings[i].life <= 0) rings.splice(i, 1); }
       }
 
@@ -229,7 +229,7 @@
           g.restore();
         });
         // particles (smoke behind, fire in front)
-        parts.forEach(function (q) { g.save(); g.globalAlpha = Math.max(0, q.life) * (q.smoke ? 0.35 : 0.8); g.fillStyle = q.gold ? "#fff3b0" : q.smoke ? "#b8b2cc" : (q.life > 0.5 ? "#ffd36b" : "#ff7a3d"); g.beginPath(); g.arc(q.x, q.y, q.r * (q.smoke ? 1.6 : 1), 0, Math.PI * 2); g.fill(); g.restore(); });
+        parts.forEach(function (q) { g.save(); g.globalAlpha = Math.max(0, q.life) * (q.smoke ? 0.16 : 0.8); g.fillStyle = q.gold ? "#fff3b0" : q.smoke ? "#b8b2cc" : (q.life > 0.5 ? "#ffd36b" : "#ff7a3d"); g.beginPath(); g.arc(q.x, q.y, q.r * (q.smoke ? 1.6 : 1), 0, Math.PI * 2); g.fill(); g.restore(); });
         // countdown rings
         rings.forEach(function (r) { const k = 1 - r.life; g.save(); g.globalAlpha = r.life * 0.8; g.strokeStyle = r.big ? "#ffd36b" : "#c9c3ff"; g.lineWidth = S * 0.012 * r.life + 1; g.shadowColor = g.strokeStyle; g.shadowBlur = 20; g.beginPath(); g.arc(rocketX, rocketY - rocketH() * 0.5, S * (0.12 + k * (r.big ? 0.45 : 0.3)), 0, Math.PI * 2); g.stroke(); g.restore(); });
         // rocket
