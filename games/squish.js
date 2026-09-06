@@ -5,9 +5,11 @@
    lose all three and the round ends early. Bomb blobs (dark, red fuse) explode
    if you click them (-1 life) — let those float away. Rare gold jelly gives a
    life back (or bonus points at full health).
-   Two modes: TIMER (the classic 30s burst) and ENDLESS (no clock — speed,
+   Three modes: TIMER (the classic 30s burst), ENDLESS (no clock — speed,
    spawn rate, crowd size and bomb share all ramp with time + score until
-   your three lives are gone). Each mode keeps its own best. */
+   your three lives are gone) and CHILL (made for Christopher, age 5: no
+   timer, no lives, no bombs, no losing — just giant smiling jellies that
+   drift up slowly and pop with a happy note; it never ends). */
 (function () {
   Arcade.register({
     id: "squish",
@@ -22,7 +24,8 @@
       let cssW = 0, cssH = 0, dpr = 1, reduced = false;
 
       let phase;             // "menu" | "play" | "done"
-      let mode;              // "timer" | "endless"
+      let mode;              // "timer" | "endless" | "chill"
+      let chillPops = 0;     // lifetime pops in Chill mode (persisted, shown big)
       let bestTimer, bestEndless;
       let menuRects;         // hit boxes for the two mode cards
       let blobs, drips, score, best, timeLeft, combo, comboT, spawnT, popFlash;
@@ -33,13 +36,15 @@
       // level ~1 after 30s or 70 points; everything scales off it (capped so it stays playable).
       // Gentle: ~1.2x speed at 30s, ~1.6x at 90s, hard cap 2.4x.
       function level() { return mode === "endless" ? elapsed / 30000 + score / 70 : 0; }
-      function speedMult() { return mode === "endless" ? Math.min(2.4, 1 + 0.2 * level()) : 1; }
+      function speedMult() { if (mode === "chill") return 0.55; return mode === "endless" ? Math.min(2.4, 1 + 0.2 * level()) : 1; }
       function spawnEvery() {
+        if (mode === "chill") return 650;
         if (mode === "endless") return Math.max(280, 620 / (1 + 0.25 * level()));
         return 620 - (1 - timeLeft / ROUND) * 260;   // timer: quickens slightly for a fun finish
       }
-      function maxBlobs() { return mode === "endless" ? Math.min(26, Math.round(14 + 2 * level())) : 14; }
-      function bombChance() { return mode === "endless" ? Math.min(0.25, BOMB_CHANCE + 0.012 * level()) : BOMB_CHANCE; }
+      function maxBlobs() { if (mode === "chill") return 9; return mode === "endless" ? Math.min(26, Math.round(14 + 2 * level())) : 14; }
+      function bombChance() { if (mode === "chill") return 0; return mode === "endless" ? Math.min(0.25, BOMB_CHANCE + 0.012 * level()) : BOMB_CHANCE; }
+      const CHILL_NOTES = [523, 587, 659, 784, 880, 1046, 1174, 1318];   // C pentatonic — every pop is a happy note
       const GOLD_CHANCE = 0.06;   // share of spawns that are gold jelly
       const GOLD_HUE = "255,214,110";
       const BOMB_HUE = "255,96,110";
@@ -74,11 +79,12 @@
         // On a narrow phone, scale blobs up so even the smallest is a comfortable
         // tap target (~44px). Desktop keeps the original smaller/denser blobs.
         const portrait = window.innerWidth < 720;
-        const base = portrait ? 0.075 : 0.045;
+        let base = portrait ? 0.075 : 0.045;
         let r = cssW * (base + Math.random() * 0.05);
+        if (mode === "chill") r = cssW * ((portrait ? 0.12 : 0.1) + Math.random() * 0.05);   // giant, for little hands
         // kind: plain jelly, a bomb (don't click!), or rare gold (extra life)
         let kind = "jelly";
-        if (elapsed > 2500) {
+        if (elapsed > 2500 && mode !== "chill") {
           const roll = Math.random();
           const bc = bombChance();
           if (roll < bc) kind = "bomb";
@@ -86,6 +92,7 @@
         }
         let hue = HUES[Math.floor(Math.random() * HUES.length)];
         let vy = -cssH * (0.00016 + Math.random() * 0.00013);   // drift up (~1.5x the old drift)
+        if (mode === "chill" && Math.random() < 0.08) kind = "gold";   // a sparkly one now and then
         if (kind === "bomb") { hue = BOMB_HUE; r *= 0.95; }
         if (kind === "gold") { hue = GOLD_HUE; r *= 0.85; vy *= 1.35; }   // gold is small + quick
         blobs.push({
@@ -98,6 +105,7 @@
           wob: Math.random() * Math.PI * 2,                   // wobble phase
           wobA: 0,                                            // wobble amplitude (kick on near-miss/hover)
           squish: 0,                                          // 0..1 squish anim on pop
+          face: Math.floor(Math.random() * 3),                // chill mode: which cute face
           dead: false
         });
       }
@@ -118,12 +126,22 @@
           ctx.audio.chord([660, 880, 1320], 0.35, { type: "sine", vol: 0.12, attack: 0.01 });
         }
         score += gain; ctx.setScore(score);
-        if (score > best) best = score;
+        if (mode === "chill") {
+          chillPops++; ctx.storage.set("chill_pops", chillPops);
+          // happy note (pentatonic, random) + a soft boing under it
+          const f = CHILL_NOTES[Math.floor(Math.random() * CHILL_NOTES.length)];
+          ctx.audio.tone(f, 0.28, { type: "sine", vol: 0.16, attack: 0.01 });
+          ctx.audio.tone(f * 2, 0.18, { type: "sine", vol: 0.05, when: 0.02 });
+          ctx.audio.tone(220, 0.16, { type: "sine", vol: 0.1, glide: 480 });
+          if (chillPops % 10 === 0) { ctx.audio.arp([523, 659, 784, 1046], { dur: 0.16, step: 0.07, vol: 0.14 }); toast(bl.x, bl.y - bl.r, "★ " + chillPops, GOLD_HUE); }
+        } else {
+          if (score > best) best = score;
+          // boing: pitch rises with combo
+          ctx.audio.tone(280 + Math.min(20, combo) * 22, 0.14, { type: "sine", vol: 0.16, glide: 520 });
+        }
         popFlash = 0.5;
-        // boing: pitch rises with combo
-        ctx.audio.tone(280 + Math.min(20, combo) * 22, 0.14, { type: "sine", vol: 0.16, glide: 520 });
         // droplets
-        const n = reduced ? 5 : 12;
+        const n = reduced ? 5 : (mode === "chill" ? 20 : 12);
         for (let i = 0; i < n; i++) {
           const a = Math.random() * Math.PI * 2, sp = bl.r * (0.02 + Math.random() * 0.05);
           drips.push({ x: bl.x, y: bl.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: bl.r * (0.12 + Math.random() * 0.14), hue: bl.hue, life: 1 });
@@ -226,8 +244,8 @@
           // bounce off side walls softly
           if (bl.x < bl.r) { bl.x = bl.r; bl.vx = Math.abs(bl.vx); bl.wobA = 1; }
           if (bl.x > cssW - bl.r) { bl.x = cssW - bl.r; bl.vx = -Math.abs(bl.vx); bl.wobA = 1; }
-          // crossed the danger line — lose a life
-          if (bl.y < lineY()) { escapeBlob(bl); if (phase !== "play") return; }
+          // crossed the danger line — lose a life (Chill: they just float away, no penalty)
+          if (mode !== "chill" && bl.y < lineY()) { escapeBlob(bl); if (phase !== "play") return; }
         }
         // cull popped (after squish anim) + blobs that floated off the top
         for (let i = blobs.length - 1; i >= 0; i--) {
@@ -294,6 +312,7 @@
             g.beginPath();
             g.ellipse(-bl.r * 0.3, -bl.r * 0.35, bl.r * 0.26, bl.r * 0.16, -0.5, 0, Math.PI * 2);
             g.fillStyle = "rgba(255,255,255," + (gold ? 0.55 : 0.35) + ")"; g.fill();
+            if (mode === "chill") drawFace(bl, alpha);
             if (gold) {
               // sparkle: a small four-point star that twinkles
               const sz = bl.r * (0.18 + pulse * 0.1);
@@ -305,6 +324,28 @@
           }
         }
         g.restore();
+      }
+
+      // Chill mode: a little kawaii face so every jelly is a friend
+      function drawFace(bl, alpha) {
+        const r = bl.r, ink = "rgba(40,30,50," + (0.8 * alpha) + ")";
+        g.fillStyle = ink;
+        const ey = -r * 0.05, ex = r * 0.3;
+        if (bl.face === 2) {
+          g.strokeStyle = ink; g.lineWidth = r * 0.06; g.lineCap = "round";
+          [-1, 1].forEach(function (sg) { g.beginPath(); g.arc(sg * ex, ey + r * 0.05, r * 0.1, Math.PI * 1.15, Math.PI * 1.85); g.stroke(); });
+        } else {
+          [-1, 1].forEach(function (sg) { g.beginPath(); g.ellipse(sg * ex, ey, r * 0.09, r * 0.11, 0, 0, Math.PI * 2); g.fill(); });
+          g.fillStyle = "rgba(255,255,255," + (0.85 * alpha) + ")";
+          [-1, 1].forEach(function (sg) { g.beginPath(); g.arc(sg * ex - r * 0.03, ey - r * 0.04, r * 0.035, 0, Math.PI * 2); g.fill(); });
+        }
+        g.fillStyle = "rgba(255,120,150," + (0.3 * alpha) + ")";
+        [-1, 1].forEach(function (sg) { g.beginPath(); g.ellipse(sg * r * 0.5, r * 0.2, r * 0.13, r * 0.08, 0, 0, Math.PI * 2); g.fill(); });
+        g.strokeStyle = ink; g.lineWidth = r * 0.05; g.lineCap = "round";
+        g.beginPath();
+        if (bl.face === 1) { g.arc(0, r * 0.22, r * 0.16, 0.1 * Math.PI, 0.9 * Math.PI); }
+        else { g.arc(0, r * 0.18, r * 0.12, 0.15 * Math.PI, 0.85 * Math.PI); }
+        g.stroke();
       }
 
       function draw() {
@@ -364,8 +405,8 @@
           g.fillStyle = v; g.fillRect(0, 0, cssW, cssH);
         }
 
-        // danger line — glows red for a moment after a life is lost
-        if (phase !== "menu") {
+        // danger line — glows red for a moment after a life is lost (not in Chill)
+        if (phase !== "menu" && mode !== "chill") {
           const ly = lineY();
           const r = Math.round(232 + (255 - 232) * lifeFlash), gg = Math.round(139 - 40 * lifeFlash), b = Math.round(176 - 66 * lifeFlash);
           const col = r + "," + gg + "," + b;
@@ -385,8 +426,8 @@
           }
         }
 
-        // lives — three jelly dots, top-left; lost ones go hollow
-        if (phase !== "menu") {
+        // lives — three jelly dots, top-left; lost ones go hollow (not in Chill)
+        if (phase !== "menu" && mode !== "chill") {
           const rr = Math.max(5, cssW * 0.013);
           const y0 = cssH * 0.035 + 3;
           for (let i = 0; i < LIVES; i++) {
@@ -402,7 +443,15 @@
           }
         }
 
-        if (phase === "play") {
+        if (phase === "play" && mode === "chill") {
+          // big friendly counter, nothing else on screen
+          g.save();
+          g.textAlign = "center"; g.textBaseline = "top";
+          g.fillStyle = "rgba(255,214,110,0.9)"; g.shadowColor = "rgba(255,214,110,0.6)"; g.shadowBlur = 16;
+          g.font = "800 " + Math.round(cssW * 0.07) + "px system-ui, sans-serif";
+          g.fillText("★ " + score, cssW / 2, cssH * 0.03);
+          g.restore();
+        } else if (phase === "play") {
           if (mode === "timer") {
             // timer bar
             const frac = timeLeft / ROUND;
@@ -460,11 +509,12 @@
 
         const cards = [
           { id: "timer", title: "Timer", lines: ["30 seconds", "pop as many as you can"], best: bestTimer, hue: HUES[0] },
-          { id: "endless", title: "Endless", lines: ["no clock · 3 lives", "ramps up the longer you last"], best: bestEndless, hue: "199,146,255" }
+          { id: "endless", title: "Endless", lines: ["no clock · 3 lives", "ramps up the longer you last"], best: bestEndless, hue: "199,146,255" },
+          { id: "chill", title: "Chill", lines: ["no timer · no losing", "giant happy jellies, just pop"], best: chillPops, hue: "127,224,160", bestLabel: "popped ever" }
         ];
         menuRects = [];
-        const w = cssW * 0.38, h = cssH * 0.32, y = cssH * 0.37, gap = cssW * 0.04;
-        const x0 = (cssW - (w * 2 + gap)) / 2;
+        const w = cssW * 0.28, h = cssH * 0.34, y = cssH * 0.36, gap = cssW * 0.03;
+        const x0 = (cssW - (w * 3 + gap * 2)) / 2;
         const t = performance.now();
         cards.forEach((c, i) => {
           const x = x0 + i * (w + gap);
@@ -478,15 +528,15 @@
           g.strokeStyle = "rgba(" + c.hue + "," + (0.6 + breathe * 0.3) + ")"; g.lineWidth = 2;
           roundRect(x, y, w, h, cssW * 0.025); g.stroke();
           g.fillStyle = "rgba(" + c.hue + ",0.95)";
-          g.font = "800 " + Math.round(cssW * 0.052) + "px system-ui, sans-serif";
-          g.fillText(c.title, x + w / 2, y + h * 0.26);
+          g.font = "800 " + Math.round(cssW * 0.048) + "px system-ui, sans-serif";
+          g.fillText(c.title, x + w / 2, y + h * 0.24);
           g.fillStyle = "rgba(230,235,245,0.8)";
-          g.font = "500 " + Math.round(cssW * 0.024) + "px system-ui, sans-serif";
-          g.fillText(c.lines[0], x + w / 2, y + h * 0.5);
-          g.fillText(c.lines[1], x + w / 2, y + h * 0.62);
+          g.font = "500 " + Math.round(cssW * 0.02) + "px system-ui, sans-serif";
+          g.fillText(c.lines[0], x + w / 2, y + h * 0.48);
+          g.fillText(c.lines[1], x + w / 2, y + h * 0.6);
           g.fillStyle = "rgba(200,205,230,0.6)";
-          g.font = "600 " + Math.round(cssW * 0.024) + "px system-ui, sans-serif";
-          g.fillText("best " + c.best, x + w / 2, y + h * 0.84);
+          g.font = "600 " + Math.round(cssW * 0.021) + "px system-ui, sans-serif";
+          g.fillText((c.bestLabel || "best") + " " + c.best, x + w / 2, y + h * 0.84);
           g.restore();
         });
       }
@@ -514,13 +564,14 @@
           wrap.appendChild(canvas);
           const hint = document.createElement("div");
           hint.className = "hint";
-          hint.textContent = "Squish jelly before it crosses the line · don't click bombs · gold = extra life · Timer or Endless";
+          hint.textContent = "Timer / Endless: squish jelly before the line, avoid bombs, gold = extra life · Chill: giant jellies, no losing, just pop";
           wrap.appendChild(hint);
           stage.appendChild(wrap);
 
           best = ctx.storage.best();
           bestTimer = ctx.storage.get("best_timer", best);   // legacy best was always timer mode
           bestEndless = ctx.storage.get("best_endless", 0);
+          chillPops = ctx.storage.get("chill_pops", 0);
           resize();
           reset("timer");
           phase = "menu";
@@ -551,8 +602,9 @@
               return;
             }
           }
-          // miss — tiny wobble on nearby blobs, breaks combo
+          // miss — tiny wobble on nearby blobs, breaks combo (Chill: a soft happy blip, nothing lost)
           combo = 0;
+          if (mode === "chill") { ctx.audio.tone(392, 0.1, { type: "sine", vol: 0.05, glide: 520 }); return; }
           ctx.audio.soft();
         },
         tick(dt) { update(Math.min(50, dt)); draw(); },
