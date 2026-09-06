@@ -92,6 +92,7 @@
       let S = 0, dpr = 1, reduced = false;
       let now = 0, taps = 0;
       let fish = [];       // {f, x, y, dir, face, speed, r, bob, t, wig, puff, target, rainbow, last}
+      let confetti = [];   // rainbow-fish celebration
       let bubbles = [];    // {x,y,r,vy,life,wob}
       let pellets = [];    // {x,y,vy,r}
       let weeds = [];      // {x, h, phase, col}
@@ -136,6 +137,12 @@
         const note = [523, 587, 659, 784, 880][Math.floor(Math.random() * 5)];
         ctx.audio.tone(fs.rainbow ? note * 2 : note, 0.18, { type: "triangle", vol: 0.09, when: 0.12 });
         puffBubbles(fs.x + fs.face * fs.r * 0.8, fs.y - fs.r * 0.2, reduced ? 4 : 10, true);
+        if (fs.rainbow) {
+          // the rainbow fish is special: confetti + a little fanfare
+          ctx.audio.arp([784, 1046, 1318, 1568, 2093], { dur: 0.16, step: 0.06, vol: 0.12, type: "sine", when: 0.1 });
+          const n = reduced ? 14 : 60;
+          for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, sp = S * (0.0003 + Math.random() * 0.0007); confetti.push({ x: fs.x, y: fs.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - S * 0.0003, life: 1, r: S * (0.005 + Math.random() * 0.007), col: ["#ff8fa3", "#ffd36b", "#a8e6a0", "#74b9ff", "#c9c3ff", "#ffffff"][i % 6], rot: Math.random() * 6.28 }); }
+        }
       }
       function dropPellet(x, y) {
         countTap();
@@ -163,6 +170,7 @@
 
       function update(dt) {
         now += dt;
+        for (let i = confetti.length - 1; i >= 0; i--) { const c = confetti[i]; c.vy += S * 0.0000012 * dt; c.vx *= Math.pow(0.999, dt); c.x += c.vx * dt; c.y += c.vy * dt; c.rot += dt * 0.004; c.life -= dt / 1600; if (c.life <= 0) confetti.splice(i, 1); }
         const floorY = S * 0.86;
         // bubbles ambient
         nextBubble -= dt;
@@ -230,6 +238,8 @@
         });
         // bubbles
         bubbles.forEach(function (b) { drawBubble(g, b.x, b.y, b.r, Math.max(0, b.life) * 0.8); });
+        // confetti (rainbow fish)
+        confetti.forEach(function (c) { g.save(); g.globalAlpha = Math.max(0, c.life); g.fillStyle = c.col; g.translate(c.x, c.y); g.rotate(c.rot); g.fillRect(-c.r, -c.r * 0.6, c.r * 2, c.r * 1.2); g.restore(); });
         // counter
         g.save(); g.textAlign = "center"; g.textBaseline = "top";
         g.fillStyle = "#ffd36b"; g.shadowColor = "rgba(255,211,107,0.6)"; g.shadowBlur = 16;
@@ -277,7 +287,7 @@
         getScore() { return taps; },
         teardown() {
           if (unResize) unResize(); unResize = null;
-          stageEl = ctx = canvas = g = null; fish = []; bubbles = []; pellets = []; weeds = [];
+          stageEl = ctx = canvas = g = null; confetti = []; fish = []; bubbles = []; pellets = []; weeds = [];
         }
       };
     }

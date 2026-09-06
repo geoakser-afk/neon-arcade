@@ -80,11 +80,11 @@
   Arcade.register({
     id: "rocket",
     name: "Rocket",
-    tagline: "Tap to launch! Fly past the planets.",
+    tagline: "Tap to launch! Fly past the planets and catch the stars.",
     accent: "#c9c3ff",
     complexity: "low",
     controls: "click",
-    scoreLabel: "Launches",
+    scoreLabel: "Stars",
     kid: true,
     kidIcon(g, s) { drawRocket(g, s / 2, s * 0.8, s * 0.66, 0.8, 0, 0, 0); },
     create() {
@@ -92,6 +92,7 @@
       let S = 0, dpr = 1, reduced = false, now = 0, launches = 0;
       let state = "idle", t = 0, beeps = 0, shake = 0, scroll = 0, rocketY = 0, rocketX = 0, sq = 0;
       let stars = [], planets = [], parts = [], rings = [];
+      let pickups = [], got = 0;   // gold stars to fly through
       const PAL = [
         { color: "#ff8fa3", dark: "#c94c66", style: "ring", ring: "#ffd36b" },
         { color: "#ffb86b", dark: "#c47a2e", style: "stripes" },
@@ -135,7 +136,7 @@
         rings.push({ life: 1, big: i === 2 }); shake = i + 1;
       }
       function liftoff() {
-        state = "fly"; t = 0; launches++; ctx.setScore(launches);
+        state = "fly"; t = 0; launches++; ctx.setScore(got);
         ctx.audio.tone(120, 1.2, { type: "sine", vol: 0.16, glide: 900 });
         ctx.audio.tone(60, 1.2, { type: "triangle", vol: 0.07, glide: 300 });
         ctx.audio.arp([523, 659, 784, 1046], { dur: 0.2, step: 0.1, vol: 0.09, type: "sine", when: 0.9 });
@@ -175,6 +176,25 @@
         if (speed > 0) {
           scroll += speed * dt;
           if (planets.length < 3 && Math.random() < dt * 0.0009) spawnPlanet();
+          // gold stars stream down; most are in the rocket's lane so he can actually catch them
+          if (state === "fly" && pickups.length < 6 && Math.random() < dt * 0.0035) {
+            const lane = Math.random() < 0.7;
+            pickups.push({ x: lane ? rocketX + (Math.random() - 0.5) * S * 0.16 : S * (0.1 + Math.random() * 0.8), y: -S * 0.06, r: S * 0.034, ph: Math.random() * 6.28, got: 0 });
+          }
+        }
+        for (let i = pickups.length - 1; i >= 0; i--) {
+          const s = pickups[i];
+          if (s.got > 0) { s.got += dt; if (s.got > 350) pickups.splice(i, 1); continue; }
+          s.y += speed * 0.95 * dt;
+          const nose = rocketY - rocketH() * 0.5;
+          if (state === "fly" && Math.abs(s.x - rocketX) < s.r + S * 0.055 && Math.abs(s.y - nose) < s.r + rocketH() * 0.55) {
+            s.got = 1; got++; ctx.setScore(got); sq = 0.5;
+            ctx.audio.tone(1046 + (got % 5) * 120, 0.18, { type: "sine", vol: 0.13, glide: 1568 + (got % 5) * 120 });
+            if (got % 10 === 0) ctx.audio.arp([784, 1046, 1318, 1568], { dur: 0.16, step: 0.07, vol: 0.12 });
+            for (let k = 0; k < (reduced ? 4 : 12); k++) { const a = Math.random() * 6.28, sp = S * (0.0002 + Math.random() * 0.0004); parts.push({ x: s.x, y: s.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: S * 0.006, life: 1, smoke: false, gold: true }); }
+            continue;
+          }
+          if (s.y > S + s.r * 2) pickups.splice(i, 1);
         }
         stars.forEach(function (s) { s.y += speed * s.z * dt / S; if (s.y > 1.02) { s.y -= 1.04; s.x = Math.random(); } });
         for (let i = planets.length - 1; i >= 0; i--) {
@@ -199,8 +219,17 @@
         g.fillStyle = "#3a3452"; rrect(g, S * 0.34, padY() - S * 0.005, S * 0.32, S * 0.03, S * 0.01); g.fill();
         g.fillStyle = "#2a2540"; [0.38, 0.6].forEach(function (fx) { g.fillRect(fx * S, padY() + S * 0.02, S * 0.02, S * 0.06); });
         g.fillStyle = "#ffd36b"; g.shadowColor = "#ffd36b"; g.shadowBlur = S * 0.02; [0.36, 0.62].forEach(function (fx) { g.beginPath(); g.arc(fx * S + S * 0.01, padY(), S * 0.008, 0, Math.PI * 2); g.fill(); }); g.shadowBlur = 0;
+        // gold star pickups
+        pickups.forEach(function (s) {
+          const k = s.got > 0 ? 1 + s.got / 350 : 1, a = s.got > 0 ? 1 - s.got / 350 : 1;
+          const tw = 0.85 + 0.15 * Math.sin(now * 0.006 + s.ph);
+          g.save(); g.globalAlpha = a; g.translate(s.x, s.y); g.rotate(Math.sin(now * 0.002 + s.ph) * 0.25); g.scale(tw * k, tw * k);
+          g.fillStyle = "#ffd36b"; g.shadowColor = "#ffd36b"; g.shadowBlur = s.r * 0.7;
+          g.beginPath(); for (let i = 0; i < 10; i++) { const an = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? s.r * 0.45 : s.r; i ? g.lineTo(Math.cos(an) * rr, Math.sin(an) * rr) : g.moveTo(Math.cos(an) * rr, Math.sin(an) * rr); } g.closePath(); g.fill();
+          g.restore();
+        });
         // particles (smoke behind, fire in front)
-        parts.forEach(function (q) { g.save(); g.globalAlpha = Math.max(0, q.life) * (q.smoke ? 0.35 : 0.8); g.fillStyle = q.smoke ? "#b8b2cc" : (q.life > 0.5 ? "#ffd36b" : "#ff7a3d"); g.beginPath(); g.arc(q.x, q.y, q.r * (q.smoke ? 1.6 : 1), 0, Math.PI * 2); g.fill(); g.restore(); });
+        parts.forEach(function (q) { g.save(); g.globalAlpha = Math.max(0, q.life) * (q.smoke ? 0.35 : 0.8); g.fillStyle = q.gold ? "#fff3b0" : q.smoke ? "#b8b2cc" : (q.life > 0.5 ? "#ffd36b" : "#ff7a3d"); g.beginPath(); g.arc(q.x, q.y, q.r * (q.smoke ? 1.6 : 1), 0, Math.PI * 2); g.fill(); g.restore(); });
         // countdown rings
         rings.forEach(function (r) { const k = 1 - r.life; g.save(); g.globalAlpha = r.life * 0.8; g.strokeStyle = r.big ? "#ffd36b" : "#c9c3ff"; g.lineWidth = S * 0.012 * r.life + 1; g.shadowColor = g.strokeStyle; g.shadowBlur = 20; g.beginPath(); g.arc(rocketX, rocketY - rocketH() * 0.5, S * (0.12 + k * (r.big ? 0.45 : 0.3)), 0, Math.PI * 2); g.stroke(); g.restore(); });
         // rocket
@@ -215,7 +244,7 @@
         g.save(); g.textAlign = "center"; g.textBaseline = "top";
         g.fillStyle = "#ffd36b"; g.shadowColor = "rgba(255,211,107,0.6)"; g.shadowBlur = 16;
         g.font = "800 " + Math.round(S * 0.075) + "px system-ui, sans-serif";
-        g.fillText("★ " + launches, S / 2, S * 0.03); g.restore();
+        g.fillText("★ " + got, S / 2, S * 0.03); g.restore();
       }
 
       return {
@@ -230,10 +259,10 @@
           g = canvas.getContext("2d");
           wrap.appendChild(canvas);
           const hint = document.createElement("div"); hint.className = "hint";
-          hint.textContent = "Tap the rocket to launch. Tap planets as they float by.";
+          hint.textContent = "Tap the rocket to launch. Catch the gold stars, tap planets as they float by.";
           wrap.appendChild(hint);
           stage.appendChild(wrap);
-          now = 0; t = 0; launches = 0; state = "idle"; stars = []; planets = []; parts = []; rings = []; shake = 0; sq = 0; scroll = 0;
+          now = 0; t = 0; launches = 0; got = 0; pickups = []; state = "idle"; stars = []; planets = []; parts = []; rings = []; shake = 0; sq = 0; scroll = 0;
           resize();
           spawnPlanet(S * 0.3); planets[0].x = S * 0.22; spawnPlanet(S * 0.42); planets[1].x = S * 0.78;
           ctx.setScore(0);
@@ -256,10 +285,10 @@
           ctx.audio.tone(330, 0.08, { type: "sine", vol: 0.04, glide: 420 });
         },
         tick(dt) { update(Math.min(50, dt)); draw(); },
-        getScore() { return launches; },
+        getScore() { return got; },
         teardown() {
           if (unResize) unResize(); unResize = null;
-          stageEl = ctx = canvas = g = null; stars = []; planets = []; parts = []; rings = [];
+          stageEl = ctx = canvas = g = null; stars = []; planets = []; parts = []; rings = []; pickups = [];
         }
       };
     }

@@ -1858,25 +1858,59 @@
       // =====================================================================
       //  PLAYGROUND — no UI, no text: just your squishies and toys to mess with them
       // =====================================================================
-      const PG_TOOLS = ["hand", "slide", "tramp", "spring", "fan", "magnet", "whirl", "bubble", "cannon", "wreck", "stomp", "zerog", "rain"];
-      const PG_LABEL = { hand: "grab & fling", slide: "place a slide", tramp: "place a trampoline", fan: "place a fan", magnet: "hold to attract", whirl: "hold to swirl", cannon: "click to fire a toy", stomp: "click to stomp", bubble: "bubble a toy (click again to pop)", spring: "place a spring launcher", wreck: "wrecking ball — drag it back, let go", zerog: "zero gravity", rain: "drop them all again" };
+      const PG_TOOLS = ["box", "hand", "slide", "tramp", "spring", "fan", "magnet", "whirl", "bubble", "cannon", "wreck", "stomp", "zerog", "rain"];
+      const PG_LABEL = { box: "toy box — pick which toys are out (drag a toy onto it to put it away)", hand: "grab & fling", slide: "place a slide", tramp: "place a trampoline", fan: "place a fan", magnet: "hold to attract", whirl: "hold to swirl", cannon: "click to fire a toy", stomp: "click to stomp", bubble: "bubble a toy (click again to pop)", spring: "place a spring launcher", wreck: "wrecking ball — drag it back, let go", zerog: "zero gravity", rain: "drop them all again" };
       let pg = null;
 
-      function pgToyList() {
+      // Every toy you own; the ones in save.pgStored are "put away" in the toy box (default: all out).
+      function pgAllToys() {
         if (save.inv.length) return save.inv.map(function (x) { return { uid: x.u, it: ITEM[x.id] }; });
         return [{ uid: -1, it: ITEM.mini_bun }, { uid: -2, it: ITEM.rubber_bouncer }, { uid: -3, it: ITEM.crunch_bead }];
       }
+      function pgStored() { if (!save.pgStored) save.pgStored = []; return save.pgStored; }
+      function pgIsStored(uid) { return pgStored().indexOf(uid) >= 0; }
+      function pgToyList() { return pgAllToys().filter(function (t) { return !pgIsStored(t.uid); }); }
+      function pgSpawnToy(t, i) {
+        const r = pgRadius(t.it);
+        return { uid: t.uid, it: t.it, r: r, x: S * (0.1 + Math.random() * 0.8), y: -r - Math.random() * S * 0.3 - (i || 0) * r * 0.4, vx: 0, vy: 0, sq: 0, sqv: 0, lastSnd: -9999, onSlide: 0, bubble: 0 };
+      }
+      // put a toy away into the box (poof) / take it out (drops in from the top)
+      function pgStore(uid) {
+        if (pgIsStored(uid)) return;
+        pgStored().push(uid); markDirty();
+        const i = pg.toys.findIndex(function (t) { return t.uid === uid; });
+        if (i >= 0) {
+          const t = pg.toys[i];
+          pg.fx.push({ kind: "ring", x: t.x, y: t.y, t: 0, dur: 350, r: t.r * 2.5, col: ctx.accent });
+          for (let k = 0; k < 8; k++) p_fxBubble(t.x, t.y, t.r);
+          if (pg.grabbed === t) pg.grabbed = null;
+          pg.toys.splice(i, 1);
+        }
+        ctx.audio.tone(520, 0.14, { type: "sine", vol: 0.1, glide: 180 });
+      }
+      function pgUnstore(uid) {
+        const st = pgStored(), i = st.indexOf(uid);
+        if (i < 0) return;
+        st.splice(i, 1); markDirty();
+        const t = pgAllToys().find(function (q) { return q.uid === uid; });
+        if (t && !pg.toys.some(function (q) { return q.uid === uid; })) { const nt = pgSpawnToy(t, 0); nt.x = S * (0.2 + Math.random() * 0.6); pg.toys.push(nt); }
+        ctx.audio.tone(330, 0.14, { type: "sine", vol: 0.1, glide: 660 });
+      }
+      function p_fxBubble(x, y, r) { pg.fx.push({ kind: "bubble", x: x + (Math.random() - 0.5) * r, y: y + (Math.random() - 0.5) * r, t: 0, dur: 700 + Math.random() * 500, r: r * (0.15 + Math.random() * 0.2) }); }
+      function pgStoreAll() { pgAllToys().forEach(function (t) { if (!pgIsStored(t.uid)) pgStored().push(t.uid); }); pg.toys.forEach(function (t) { pg.fx.push({ kind: "ring", x: t.x, y: t.y, t: 0, dur: 350, r: t.r * 2.5, col: ctx.accent }); }); pg.toys = []; pg.grabbed = null; markDirty(); ctx.audio.arp([660, 520, 392], { dur: 0.12, step: 0.06, vol: 0.1 }); }
+      function pgAllOut() { save.pgStored = []; markDirty(); const have = {}; pg.toys.forEach(function (t) { have[t.uid] = 1; }); pgAllToys().forEach(function (t, i) { if (!have[t.uid]) pg.toys.push(pgSpawnToy(t, i)); }); ctx.audio.arp([392, 520, 660, 784], { dur: 0.12, step: 0.06, vol: 0.1 }); }
       function pgRadius(it) { return S * (0.03 + RI[it.rar] * 0.0045); }
       function pgFloor() { return S - Math.min(S * 0.058, S * 0.09) * 1.85; }   // toys rest above the tool dock
       function enterPlayground() {
         const list = pgToyList();
         const key = list.map(function (t) { return t.uid; }).join(",") + "@" + S;
-        if (!pg) pg = { tool: "hand", objs: [], zeroG: false, fx: [], key: "", toys: [], grabbed: null, down: false, px: S / 2, py: S / 2, lastPointer: 0, hover: -1, ball: null };
+        if (!pg) pg = { tool: "hand", objs: [], zeroG: false, fx: [], key: "", toys: [], grabbed: null, down: false, px: S / 2, py: S / 2, lastPointer: 0, hover: -1, ball: null, drawer: false, page: 0 };
         if (pg.key !== key) {
           pg.key = key;
-          pg.toys = list.map(function (t, i) { const r = pgRadius(t.it); return { uid: t.uid, it: t.it, r: r, x: S * (0.1 + Math.random() * 0.8), y: -r - Math.random() * S * 0.6 - i * r * 0.4, vx: 0, vy: 0, sq: 0, sqv: 0, lastSnd: -9999, onSlide: 0, bubble: 0 }; });
+          pg.toys = list.map(function (t, i) { return pgSpawnToy(t, i); });
           pg.objs = []; pg.ball = null;
         }
+        pg.drawer = false;
         pg.grabbed = null; pg.down = false; pg.lastPointer = now;
         screen = "playground"; modal = null; mini = null; toasts = [];
       }
@@ -2105,10 +2139,21 @@
           }
           return;
         }
-        if (phase === "up") { p.down = false; p.grabbed = null; if (p.ball && p.ball.grab) { p.ball.grab = false; } }
+        if (phase === "up") {
+          // dropping a held toy onto the toy box puts it away
+          if (p.grabbed) { const br = pgDockRect("box"); if (inRect({ x: br.x - br.w * 0.4, y: br.y - br.h * 0.6, w: br.w * 1.8, h: br.h * 1.8 }, x, y)) { pgStore(p.grabbed.uid); } }
+          p.down = false; p.grabbed = null; if (p.ball && p.ball.grab) { p.ball.grab = false; }
+        }
       }
+      function pgDockLayout() {
+        const n = PG_TOOLS.length, isz = Math.min(S * 0.058, S * 0.9 / n), gap = isz * 0.18;
+        const dw = n * isz + (n - 1) * gap;
+        return { isz: isz, gap: gap, dx0: (S - dw) / 2, dy: S - isz * 1.45, dw: dw };
+      }
+      function pgDockRect(kind) { const L = pgDockLayout(), i = PG_TOOLS.indexOf(kind); return { x: L.dx0 + i * (L.isz + L.gap), y: L.dy, w: L.isz, h: L.isz }; }
       function pgDock(kind) {
         const p = pg;
+        if (kind === "box") { p.drawer = !p.drawer; sndClick(); return; }
         if (kind === "zerog") { p.zeroG = !p.zeroG; ctx.audio.tone(p.zeroG ? 300 : 500, 0.2, { type: "sine", vol: 0.08, glide: p.zeroG ? 600 : 250 }); if (p.zeroG) p.toys.forEach(function (t) { t.vy -= S * 0.0004 * (0.5 + Math.random()); }); return; }
         if (kind === "rain") { pgRain(); return; }
         p.tool = kind; sndClick();
@@ -2127,9 +2172,49 @@
         else if (kind === "bubble") { g.beginPath(); g.arc(u * 0.25, -u * 0.3, u * 0.6, 0, TAU); g.stroke(); g.lineWidth = Math.max(2, s * 0.16); g.beginPath(); g.moveTo(-u * 0.2, u * 0.2); g.lineTo(-u * 0.85, u * 0.85); g.stroke(); g.beginPath(); g.arc(u * 0.05, -u * 0.5, u * 0.12, 0, TAU); g.fill(); }
         else if (kind === "spring") { g.beginPath(); for (let k = 0; k <= 6; k++) { const yy = u * 0.9 - k * u * 0.25; g.lineTo(k % 2 ? u * 0.45 : -u * 0.45, yy); } g.stroke(); g.beginPath(); g.moveTo(-u * 0.7, u * 0.95); g.lineTo(u * 0.7, u * 0.95); g.moveTo(-u * 0.7, -u * 0.7); g.lineTo(u * 0.7, -u * 0.7); g.stroke(); }
         else if (kind === "wreck") { g.beginPath(); g.moveTo(0, -u); g.lineTo(u * 0.35, -u * 0.05); g.stroke(); g.beginPath(); g.arc(u * 0.4, u * 0.45, u * 0.5, 0, TAU); g.fill(); g.strokeStyle = "rgba(0,0,0,0.35)"; g.lineWidth = Math.max(1, s * 0.06); g.beginPath(); g.arc(u * 0.4, u * 0.45, u * 0.5, 0, TAU); g.stroke(); }
+        else if (kind === "box") { g.fillStyle = col; g.fillRect(-u * 0.9, -u * 0.2, u * 1.8, u * 1.05); g.fillStyle = "rgba(0,0,0,0.25)"; g.fillRect(-u * 0.9, -u * 0.2, u * 1.8, u * 0.22); g.fillStyle = col; g.beginPath(); g.moveTo(-u, -u * 0.2); g.lineTo(-u * 0.75, -u * 0.75); g.lineTo(u * 0.75, -u * 0.75); g.lineTo(u, -u * 0.2); g.closePath(); g.fill(); g.fillStyle = "rgba(20,16,30,0.9)"; g.beginPath(); g.arc(0, u * 0.3, u * 0.14, 0, TAU); g.fill(); }
         else if (kind === "zerog") { g.beginPath(); g.arc(0, 0, u * 0.45, 0, TAU); g.fill(); g.beginPath(); g.ellipse(0, 0, u, u * 0.35, -0.5, 0, TAU); g.stroke(); }
         else if (kind === "rain") { g.beginPath(); [[-0.45, -0.3, 0.4], [-0.05, -0.55, 0.45], [0.4, -0.3, 0.4], [0, -0.15, 0.4]].forEach(function (c) { g.moveTo(c[0] * u + c[2] * u, c[1] * u); g.arc(c[0] * u, c[1] * u, c[2] * u, 0, TAU); }); g.fill(); [-0.5, 0, 0.5].forEach(function (d, i) { g.beginPath(); g.moveTo(d * u, u * 0.35 + (i % 2) * u * 0.15); g.lineTo(d * u - u * 0.1, u * 0.85 + (i % 2) * u * 0.15); g.stroke(); }); }
         g.restore();
+      }
+      // the toy box drawer: every toy you own; bright = out in the playground, dim = put away. Tap to toggle.
+      function drawToyBox(DL) {
+        const p = pg, all = pgAllToys();
+        const px = S * 0.06, pw = S * 0.88, py = S * 0.08, ph = DL.dy - S * 0.03 - py;
+        hit(0, 0, S, S, function () { p.drawer = false; });          // tap outside → close
+        g.save(); pathRR(px, py, pw, ph, S * 0.03); g.fillStyle = "rgba(14,11,26,0.94)"; g.fill(); g.strokeStyle = rgba(ctx.accent, 0.5); g.lineWidth = 2; g.shadowColor = rgba(ctx.accent, 0.4); g.shadowBlur = S * 0.03; g.stroke(); g.restore();
+        hit(px, py, pw, ph, function () {});                          // eat taps inside
+        // header: all-out / all-away buttons (icons) + counts
+        const bh = S * 0.05, by = py + S * 0.02;
+        const outN = all.length - all.filter(function (t) { return pgIsStored(t.uid); }).length;
+        text(outN + " / " + all.length, px + S * 0.03, by + bh / 2, { size: S * 0.026, wt: "800", col: ctx.accent });
+        const b1 = { x: px + pw - S * 0.03 - bh * 2.3, y: by, w: bh, h: bh }, b2 = { x: px + pw - S * 0.03 - bh, y: by, w: bh, h: bh };
+        [b1, b2].forEach(function (b, i) {
+          g.save(); pathRR(b.x, b.y, b.w, b.h, b.h * 0.3); g.fillStyle = hovering(b.x, b.y, b.w, b.h) ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.07)"; g.fill(); g.strokeStyle = "rgba(255,255,255,0.2)"; g.lineWidth = 1; g.stroke();
+          g.strokeStyle = "#e6ecf5"; g.fillStyle = "#e6ecf5"; g.lineWidth = Math.max(2, b.h * 0.08); g.lineCap = "round"; g.lineJoin = "round";
+          const cx = b.x + b.w / 2, cy = b.y + b.h / 2, u = b.h * 0.28;
+          if (i === 0) { // all out: box with an arrow up-and-out
+            g.fillRect(cx - u, cy + u * 0.1, u * 2, u * 0.9); g.beginPath(); g.moveTo(cx, cy + u * 0.1); g.lineTo(cx, cy - u); g.moveTo(cx - u * 0.5, cy - u * 0.5); g.lineTo(cx, cy - u); g.lineTo(cx + u * 0.5, cy - u * 0.5); g.stroke();
+          } else { // all away: arrow down into box
+            g.fillRect(cx - u, cy + u * 0.1, u * 2, u * 0.9); g.beginPath(); g.moveTo(cx, cy - u); g.lineTo(cx, cy); g.moveTo(cx - u * 0.5, cy - u * 0.5); g.lineTo(cx, cy); g.lineTo(cx + u * 0.5, cy - u * 0.5); g.stroke();
+          }
+          g.restore();
+          hit(b.x, b.y, b.w, b.h, i === 0 ? pgAllOut : pgStoreAll);
+        });
+        // grid of toys
+        const cols = S < 520 ? 5 : 7, gx = px + S * 0.02, gy = by + bh + S * 0.02, gw = pw - S * 0.04, cell = gw / cols;
+        const rows = Math.max(1, Math.floor((ph - (gy - py) - S * 0.05) / cell)), per = cols * rows;
+        const np = Math.max(1, Math.ceil(all.length / per)); p.page = clamp(p.page || 0, 0, np - 1);
+        all.slice(p.page * per, p.page * per + per).forEach(function (t, i) {
+          const c = i % cols, r = Math.floor(i / cols), x = gx + c * cell, y = gy + r * cell, stored = pgIsStored(t.uid);
+          const hov = hovering(x, y, cell, cell);
+          g.save(); pathRR(x + 2, y + 2, cell - 4, cell - 4, cell * 0.2); g.fillStyle = stored ? "rgba(255,255,255,0.03)" : rgba(ctx.accent, hov ? 0.22 : 0.14); g.fill();
+          if (!stored) { g.strokeStyle = rgba(ctx.accent, 0.7); g.lineWidth = 2; g.stroke(); } else if (hov) { g.strokeStyle = "rgba(255,255,255,0.2)"; g.lineWidth = 1; g.stroke(); }
+          g.restore();
+          drawToy(x + cell / 2, y + cell * 0.5, cell * 0.28, t.it, { t: now, alpha: stored ? 0.35 : 1, glow: !stored });
+          hit(x, y, cell, cell, function () { if (stored) pgUnstore(t.uid); else pgStore(t.uid); });
+        });
+        if (np > 1) pager(px + pw * 0.3, py + ph - S * 0.05, pw * 0.4, S * 0.04, p.page, np, function () { p.page--; sndClick(); }, function () { p.page++; sndClick(); });
       }
       function drawPlayground() {
         const p = pg;
@@ -2215,15 +2300,16 @@
         }
         // dock (icons only; fades when idle) + exit
         const idle = now - p.lastPointer;
-        const dockA = idle > 2200 ? 0.22 : 1;
-        const n = PG_TOOLS.length, isz = Math.min(S * 0.058, S * 0.9 / n), gap = isz * 0.18;
-        const dw = n * isz + (n - 1) * gap, dx0 = (S - dw) / 2, dy = S - isz * 1.45;
+        const dockA = (idle > 2200 && !p.drawer) ? 0.22 : 1;
+        const DL = pgDockLayout(), isz = DL.isz, gap = DL.gap, dw = DL.dw, dx0 = DL.dx0, dy = DL.dy;
+        // the toy box glows when a held toy hovers over it
+        const boxHot = p.grabbed && inRect({ x: dx0 - isz * 0.4, y: dy - isz * 0.6, w: isz * 1.8, h: isz * 1.8 }, p.px, p.py);
         g.save(); g.globalAlpha = dockA;
         pathRR(dx0 - gap, dy - gap, dw + gap * 2, isz + gap * 2, isz * 0.4); g.fillStyle = "rgba(16,13,28,0.75)"; g.fill(); g.strokeStyle = "rgba(255,255,255,0.08)"; g.stroke();
         g.restore();
         let hoverKind = null;
         PG_TOOLS.forEach(function (k, i) {
-          const x = dx0 + i * (isz + gap), active = p.tool === k || (k === "zerog" && p.zeroG);
+          const x = dx0 + i * (isz + gap), active = p.tool === k || (k === "zerog" && p.zeroG) || (k === "box" && (p.drawer || boxHot));
           const hov = hovering(x, dy, isz, isz);
           if (hov) hoverKind = k;
           g.save(); g.globalAlpha = dockA;
@@ -2238,6 +2324,7 @@
         g.beginPath(); g.arc(ex, ey, er, 0, TAU); g.fillStyle = "rgba(16,13,28,0.7)"; g.fill(); g.stroke();
         g.beginPath(); g.moveTo(ex - er * 0.4, ey - er * 0.4); g.lineTo(ex + er * 0.4, ey + er * 0.4); g.moveTo(ex + er * 0.4, ey - er * 0.4); g.lineTo(ex - er * 0.4, ey + er * 0.4); g.stroke(); g.restore();
         hit(ex - er * 1.5, ey - er * 1.5, er * 3, er * 3, function () { screen = "collection"; sndClick(); });
+        if (p.drawer) drawToyBox(DL);
         canvas.style.cursor = p.tool === "hand" ? (pgToyAt(mx, my) || (p.ball && Math.hypot(mx - pgBallPos(p.ball).x, my - pgBallPos(p.ball).y) < p.ball.r * 1.3) ? "grab" : "default") : "crosshair";
       }
 
