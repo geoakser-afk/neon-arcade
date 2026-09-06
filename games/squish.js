@@ -30,15 +30,16 @@
       const BOMB_CHANCE = 0.17;   // share of spawns that are bombs (after the opening seconds)
 
       // ---- endless difficulty ramp: driven by BOTH time survived and points ----
-      // level ~1 after 12s or 25 points; everything scales off it (capped so it stays playable)
-      function level() { return mode === "endless" ? elapsed / 12000 + score / 25 : 0; }
-      function speedMult() { return mode === "endless" ? Math.min(4.2, 1 + 0.38 * level()) : 1; }
+      // level ~1 after 30s or 70 points; everything scales off it (capped so it stays playable).
+      // Gentle: ~1.2x speed at 30s, ~1.6x at 90s, hard cap 2.4x.
+      function level() { return mode === "endless" ? elapsed / 30000 + score / 70 : 0; }
+      function speedMult() { return mode === "endless" ? Math.min(2.4, 1 + 0.2 * level()) : 1; }
       function spawnEvery() {
-        if (mode === "endless") return Math.max(140, 620 / (1 + 0.45 * level()));
+        if (mode === "endless") return Math.max(280, 620 / (1 + 0.25 * level()));
         return 620 - (1 - timeLeft / ROUND) * 260;   // timer: quickens slightly for a fun finish
       }
-      function maxBlobs() { return mode === "endless" ? Math.min(40, Math.round(14 + 4 * level())) : 14; }
-      function bombChance() { return mode === "endless" ? Math.min(0.32, BOMB_CHANCE + 0.02 * level()) : BOMB_CHANCE; }
+      function maxBlobs() { return mode === "endless" ? Math.min(26, Math.round(14 + 2 * level())) : 14; }
+      function bombChance() { return mode === "endless" ? Math.min(0.25, BOMB_CHANCE + 0.012 * level()) : BOMB_CHANCE; }
       const GOLD_CHANCE = 0.06;   // share of spawns that are gold jelly
       const GOLD_HUE = "255,214,110";
       const BOMB_HUE = "255,96,110";
@@ -415,7 +416,7 @@
           } else {
             // endless: speed readout — bar fills toward max ramp, tint shifts hot as it climbs
             const sm = speedMult();
-            const frac = Math.min(1, (sm - 1) / 3.2);
+            const frac = Math.min(1, (sm - 1) / 1.4);
             g.fillStyle = "rgba(255,255,255,0.1)"; g.fillRect(cssW * 0.1, cssH * 0.035, cssW * 0.8, 6);
             g.fillStyle = "rgba(" + Math.round(232 + 23 * frac) + "," + Math.round(139 - 43 * frac) + "," + Math.round(176 - 66 * frac) + ",0.9)";
             g.fillRect(cssW * 0.1, cssH * 0.035, cssW * 0.8 * frac, 6);
