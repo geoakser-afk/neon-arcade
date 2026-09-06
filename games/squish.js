@@ -1,7 +1,8 @@
 /* Squish — a smooth, tactile 30-second burst. Soft neon jelly blobs drift up;
    click one to SQUISH it — it wobbles, flattens, and pops into droplets with a
-   satisfying boing. Chain quick pops for a combo. Pure calm-neon juice, no fail
-   state beyond the timer: just squish as many as you can before it's up. */
+   satisfying boing. Chain quick pops for a combo. A glowing line guards the
+   top: any blob that drifts past it costs a life. Three lives, 30 seconds —
+   lose all three and the round ends early. */
 (function () {
   Arcade.register({
     id: "squish",
@@ -17,7 +18,11 @@
 
       let phase;             // "play" | "done"
       let blobs, drips, score, best, timeLeft, combo, comboT, spawnT, popFlash;
+      let lives, lifeFlash, endReason;
       const ROUND = 30000;   // 30s burst
+      const LIVES = 3;
+      const LINE_FRAC = 0.14;   // danger line sits this far down from the top
+      function lineY() { return cssH * LINE_FRAC; }
 
       // accent + a couple companion jelly hues (all soft/calm)
       const HUES = ["232,139,176", "199,146,255", "111,208,224", "127,224,160", "240,180,90"];
@@ -35,6 +40,7 @@
         phase = "play";
         blobs = []; drips = []; score = 0; combo = 0; comboT = 0;
         timeLeft = ROUND; spawnT = 0; popFlash = 0;
+        lives = LIVES; lifeFlash = 0; endReason = "";
         ctx.setScore(0);
       }
 
@@ -49,7 +55,7 @@
           x: r + Math.random() * (cssW - r * 2),
           y: cssH + r,
           r: r, hue: hue,
-          vy: -cssH * (0.00010 + Math.random() * 0.00009),   // drift up
+          vy: -cssH * (0.00016 + Math.random() * 0.00013),   // drift up (~1.5x the old drift)
           vx: (Math.random() * 2 - 1) * cssW * 0.00003,
           wob: Math.random() * Math.PI * 2,                   // wobble phase
           wobA: 0,                                            // wobble amplitude (kick on near-miss/hover)
@@ -75,8 +81,25 @@
         }
       }
 
+      // a blob slipped past the danger line: it bursts red, you lose a life
+      function escapeBlob(bl) {
+        bl.dead = true;
+        bl.squish = 0.35;
+        lives--;
+        lifeFlash = 1;
+        combo = 0; comboT = 0;
+        ctx.audio.tone(140, 0.28, { type: "triangle", vol: 0.14, glide: 70 });
+        const n = reduced ? 6 : 14;
+        for (let i = 0; i < n; i++) {
+          const a = Math.random() * Math.PI * 2, sp = bl.r * (0.03 + Math.random() * 0.06);
+          drips.push({ x: bl.x, y: bl.y, vx: Math.cos(a) * sp, vy: Math.abs(Math.sin(a) * sp) * 0.8, r: bl.r * (0.12 + Math.random() * 0.14), hue: "255,96,110", life: 1 });
+        }
+        if (lives <= 0) { lives = 0; endReason = "out of lives"; end(); }
+      }
+
       function end() {
         phase = "done";
+        if (!endReason) endReason = "time's up";
         if (score > best) { best = score; }
         ctx.storage.recordScore(best);
         ctx.audio.score();
@@ -84,6 +107,7 @@
 
       function update(dt) {
         if (popFlash > 0) popFlash = Math.max(0, popFlash - dt / 300);
+        if (lifeFlash > 0) lifeFlash = Math.max(0, lifeFlash - dt / 550);
         if (comboT > 0) { comboT -= dt; if (comboT <= 0) combo = 0; }
 
         // droplets always animate
@@ -111,6 +135,8 @@
           // bounce off side walls softly
           if (bl.x < bl.r) { bl.x = bl.r; bl.vx = Math.abs(bl.vx); bl.wobA = 1; }
           if (bl.x > cssW - bl.r) { bl.x = cssW - bl.r; bl.vx = -Math.abs(bl.vx); bl.wobA = 1; }
+          // crossed the danger line — lose a life
+          if (bl.y < lineY()) { escapeBlob(bl); if (phase !== "play") return; }
         }
         // cull popped (after squish anim) + blobs that floated off the top
         for (let i = blobs.length - 1; i >= 0; i--) {
@@ -179,6 +205,44 @@
           g.fillRect(0, 0, cssW, cssH);
         }
 
+        // danger line — glows red for a moment after a life is lost
+        {
+          const ly = lineY();
+          const r = Math.round(232 + (255 - 232) * lifeFlash), gg = Math.round(139 - 40 * lifeFlash), b = Math.round(176 - 66 * lifeFlash);
+          const col = r + "," + gg + "," + b;
+          g.save();
+          g.strokeStyle = "rgba(" + col + "," + (0.35 + lifeFlash * 0.6) + ")";
+          g.lineWidth = 2 + lifeFlash * 2;
+          g.shadowColor = "rgba(" + col + "," + (0.5 + lifeFlash * 0.5) + ")";
+          g.shadowBlur = 12 + lifeFlash * 22;
+          g.setLineDash([cssW * 0.02, cssW * 0.012]);
+          g.beginPath(); g.moveTo(cssW * 0.04, ly); g.lineTo(cssW * 0.96, ly); g.stroke();
+          g.restore();
+          if (lifeFlash > 0) {
+            const wash = g.createLinearGradient(0, 0, 0, ly * 1.6);
+            wash.addColorStop(0, "rgba(255,96,110," + (0.28 * lifeFlash) + ")");
+            wash.addColorStop(1, "rgba(255,96,110,0)");
+            g.fillStyle = wash; g.fillRect(0, 0, cssW, ly * 1.6);
+          }
+        }
+
+        // lives — three jelly dots, top-left; lost ones go hollow
+        {
+          const rr = Math.max(5, cssW * 0.013);
+          const y0 = cssH * 0.035 + 3;
+          for (let i = 0; i < LIVES; i++) {
+            const x = cssW * 0.1 + rr + i * rr * 3.1;
+            g.beginPath(); g.arc(x, y0 + rr * 2.6, rr, 0, Math.PI * 2);
+            if (i < lives) {
+              g.shadowColor = "rgba(" + HUES[0] + ",0.8)"; g.shadowBlur = 10;
+              g.fillStyle = "rgba(" + HUES[0] + ",0.95)"; g.fill();
+              g.shadowBlur = 0;
+            } else {
+              g.strokeStyle = "rgba(255,96,110," + (0.35 + lifeFlash * 0.5) + ")"; g.lineWidth = 1.5; g.stroke();
+            }
+          }
+        }
+
         if (phase === "play") {
           // timer bar
           const frac = timeLeft / ROUND;
@@ -192,7 +256,7 @@
           if (combo >= 4) {
             g.fillStyle = "color-mix(in srgb, " + acc + " 85%, white)";
             g.font = "800 " + Math.round(cssW * 0.04) + "px system-ui, sans-serif";
-            g.fillText("x" + (1 + Math.floor(combo / 4)) + " combo", cssW / 2, cssH * 0.1);
+            g.fillText("x" + (1 + Math.floor(combo / 4)) + " combo", cssW / 2, cssH * 0.165);
           }
         } else {
           // results
@@ -202,8 +266,10 @@
           g.fillText(String(score), cssW / 2, cssH * 0.4);
           g.fillStyle = "rgba(230,235,245,0.85)"; g.font = "700 " + Math.round(cssW * 0.04) + "px system-ui, sans-serif";
           g.fillText("popped · best " + best, cssW / 2, cssH * 0.5);
+          g.fillStyle = "rgba(255,150,160,0.8)"; g.font = "600 " + Math.round(cssW * 0.03) + "px system-ui, sans-serif";
+          g.fillText(endReason, cssW / 2, cssH * 0.55);
           g.fillStyle = "rgba(200,205,230,0.6)"; g.font = "500 " + Math.round(cssW * 0.032) + "px system-ui, sans-serif";
-          g.fillText("click to squish again", cssW / 2, cssH * 0.6);
+          g.fillText("click to squish again", cssW / 2, cssH * 0.63);
         }
       }
 
@@ -222,7 +288,7 @@
           wrap.appendChild(canvas);
           const hint = document.createElement("div");
           hint.className = "hint";
-          hint.textContent = "Click the jelly to squish it · chain pops for a combo · 30 seconds";
+          hint.textContent = "Squish the jelly before it crosses the line · 3 lives · 30 seconds";
           wrap.appendChild(hint);
           stage.appendChild(wrap);
 
