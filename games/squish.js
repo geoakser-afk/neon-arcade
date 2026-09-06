@@ -4,7 +4,10 @@
    top: any jelly that drifts past it costs a life. Three lives, 30 seconds —
    lose all three and the round ends early. Bomb blobs (dark, red fuse) explode
    if you click them (-1 life) — let those float away. Rare gold jelly gives a
-   life back (or bonus points at full health). */
+   life back (or bonus points at full health).
+   Two modes: TIMER (the classic 30s burst) and ENDLESS (no clock — speed,
+   spawn rate, crowd size and bomb share all ramp with time + score until
+   your three lives are gone). Each mode keeps its own best. */
 (function () {
   Arcade.register({
     id: "squish",
@@ -18,10 +21,24 @@
       let stageEl, ctx, canvas, g, unResize = null;
       let cssW = 0, cssH = 0, dpr = 1, reduced = false;
 
-      let phase;             // "play" | "done"
+      let phase;             // "menu" | "play" | "done"
+      let mode;              // "timer" | "endless"
+      let bestTimer, bestEndless;
+      let menuRects;         // hit boxes for the two mode cards
       let blobs, drips, score, best, timeLeft, combo, comboT, spawnT, popFlash;
       let lives, lifeFlash, endReason, goldFlash, shake, toasts, elapsed;
       const BOMB_CHANCE = 0.17;   // share of spawns that are bombs (after the opening seconds)
+
+      // ---- endless difficulty ramp: driven by BOTH time survived and points ----
+      // level ~1 after 12s or 25 points; everything scales off it (capped so it stays playable)
+      function level() { return mode === "endless" ? elapsed / 12000 + score / 25 : 0; }
+      function speedMult() { return mode === "endless" ? Math.min(4.2, 1 + 0.38 * level()) : 1; }
+      function spawnEvery() {
+        if (mode === "endless") return Math.max(140, 620 / (1 + 0.45 * level()));
+        return 620 - (1 - timeLeft / ROUND) * 260;   // timer: quickens slightly for a fun finish
+      }
+      function maxBlobs() { return mode === "endless" ? Math.min(40, Math.round(14 + 4 * level())) : 14; }
+      function bombChance() { return mode === "endless" ? Math.min(0.32, BOMB_CHANCE + 0.02 * level()) : BOMB_CHANCE; }
       const GOLD_CHANCE = 0.06;   // share of spawns that are gold jelly
       const GOLD_HUE = "255,214,110";
       const BOMB_HUE = "255,96,110";
@@ -42,7 +59,8 @@
         g.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
-      function reset() {
+      function reset(m) {
+        mode = m || mode || "timer";
         phase = "play";
         blobs = []; drips = []; score = 0; combo = 0; comboT = 0;
         timeLeft = ROUND; spawnT = 0; popFlash = 0;
@@ -61,8 +79,9 @@
         let kind = "jelly";
         if (elapsed > 2500) {
           const roll = Math.random();
-          if (roll < BOMB_CHANCE) kind = "bomb";
-          else if (roll < BOMB_CHANCE + GOLD_CHANCE) kind = "gold";
+          const bc = bombChance();
+          if (roll < bc) kind = "bomb";
+          else if (roll < bc + GOLD_CHANCE) kind = "gold";
         }
         let hue = HUES[Math.floor(Math.random() * HUES.length)];
         let vy = -cssH * (0.00016 + Math.random() * 0.00013);   // drift up (~1.5x the old drift)
@@ -158,10 +177,16 @@
       function end() {
         phase = "done";
         if (!endReason) endReason = "time's up";
-        if (score > best) { best = score; }
-        ctx.storage.recordScore(best);
+        if (mode === "endless") {
+          if (score > bestEndless) { bestEndless = score; ctx.storage.set("best_endless", bestEndless); }
+        } else {
+          if (score > bestTimer) { bestTimer = score; ctx.storage.set("best_timer", bestTimer); }
+        }
+        if (score > best) best = score;
+        ctx.storage.recordScore(score);   // hub card shows the overall best across modes
         ctx.audio.score();
       }
+      function modeBest() { return mode === "endless" ? bestEndless : bestTimer; }
 
       function update(dt) {
         if (popFlash > 0) popFlash = Math.max(0, popFlash - dt / 300);
@@ -181,17 +206,20 @@
 
         if (phase !== "play") return;
 
-        timeLeft -= dt; elapsed += dt;
-        if (timeLeft <= 0) { timeLeft = 0; end(); return; }
+        elapsed += dt;
+        if (mode === "timer") {
+          timeLeft -= dt;
+          if (timeLeft <= 0) { timeLeft = 0; end(); return; }
+        }
 
-        // spawn cadence quickens slightly as time runs down for a fun finish
+        // spawn cadence (timer: slight finish rush; endless: ramps hard)
         spawnT -= dt;
-        const rate = 620 - (1 - timeLeft / ROUND) * 260;
-        if (spawnT <= 0 && blobs.length < 14) { spawnBlob(); spawnT = rate; }
+        if (spawnT <= 0 && blobs.length < maxBlobs()) { spawnBlob(); spawnT = spawnEvery(); }
 
+        const sm = speedMult();
         for (const bl of blobs) {
           if (bl.dead) { bl.squish = Math.min(1, bl.squish + dt / 140); continue; }
-          bl.x += bl.vx * dt; bl.y += bl.vy * dt;
+          bl.x += bl.vx * sm * dt; bl.y += bl.vy * sm * dt;
           bl.wob += dt * 0.005;
           if (bl.wobA > 0) bl.wobA = Math.max(0, bl.wobA - dt / 400);
           // bounce off side walls softly
@@ -336,7 +364,7 @@
         }
 
         // danger line — glows red for a moment after a life is lost
-        {
+        if (phase !== "menu") {
           const ly = lineY();
           const r = Math.round(232 + (255 - 232) * lifeFlash), gg = Math.round(139 - 40 * lifeFlash), b = Math.round(176 - 66 * lifeFlash);
           const col = r + "," + gg + "," + b;
@@ -357,7 +385,7 @@
         }
 
         // lives — three jelly dots, top-left; lost ones go hollow
-        {
+        if (phase !== "menu") {
           const rr = Math.max(5, cssW * 0.013);
           const y0 = cssH * 0.035 + 3;
           for (let i = 0; i < LIVES; i++) {
@@ -374,20 +402,35 @@
         }
 
         if (phase === "play") {
-          // timer bar
-          const frac = timeLeft / ROUND;
-          g.fillStyle = "rgba(255,255,255,0.1)"; g.fillRect(cssW * 0.1, cssH * 0.035, cssW * 0.8, 6);
-          g.fillStyle = frac < 0.25 ? "rgba(255,120,120,0.9)" : "rgba(" + HUES[0] + ",0.9)";
-          g.fillRect(cssW * 0.1, cssH * 0.035, cssW * 0.8 * frac, 6);
-          g.fillStyle = "rgba(230,235,245,0.6)";
-          g.font = "700 " + Math.round(cssW * 0.03) + "px system-ui, sans-serif";
-          g.textAlign = "center"; g.textBaseline = "top";
-          g.fillText((timeLeft / 1000).toFixed(1) + "s", cssW / 2, cssH * 0.055);
+          if (mode === "timer") {
+            // timer bar
+            const frac = timeLeft / ROUND;
+            g.fillStyle = "rgba(255,255,255,0.1)"; g.fillRect(cssW * 0.1, cssH * 0.035, cssW * 0.8, 6);
+            g.fillStyle = frac < 0.25 ? "rgba(255,120,120,0.9)" : "rgba(" + HUES[0] + ",0.9)";
+            g.fillRect(cssW * 0.1, cssH * 0.035, cssW * 0.8 * frac, 6);
+            g.fillStyle = "rgba(230,235,245,0.6)";
+            g.font = "700 " + Math.round(cssW * 0.03) + "px system-ui, sans-serif";
+            g.textAlign = "center"; g.textBaseline = "top";
+            g.fillText((timeLeft / 1000).toFixed(1) + "s", cssW / 2, cssH * 0.055);
+          } else {
+            // endless: speed readout — bar fills toward max ramp, tint shifts hot as it climbs
+            const sm = speedMult();
+            const frac = Math.min(1, (sm - 1) / 3.2);
+            g.fillStyle = "rgba(255,255,255,0.1)"; g.fillRect(cssW * 0.1, cssH * 0.035, cssW * 0.8, 6);
+            g.fillStyle = "rgba(" + Math.round(232 + 23 * frac) + "," + Math.round(139 - 43 * frac) + "," + Math.round(176 - 66 * frac) + ",0.9)";
+            g.fillRect(cssW * 0.1, cssH * 0.035, cssW * 0.8 * frac, 6);
+            g.fillStyle = "rgba(230,235,245,0.6)";
+            g.font = "700 " + Math.round(cssW * 0.03) + "px system-ui, sans-serif";
+            g.textAlign = "center"; g.textBaseline = "top";
+            g.fillText("×" + sm.toFixed(1) + " speed · " + Math.floor(elapsed / 1000) + "s", cssW / 2, cssH * 0.055);
+          }
           if (combo >= 4) {
             g.fillStyle = "color-mix(in srgb, " + acc + " 85%, white)";
             g.font = "800 " + Math.round(cssW * 0.04) + "px system-ui, sans-serif";
             g.fillText("x" + (1 + Math.floor(combo / 4)) + " combo", cssW / 2, cssH * 0.165);
           }
+        } else if (phase === "menu") {
+          drawMenu(acc);
         } else {
           // results
           g.fillStyle = "rgba(6,8,14,0.78)"; g.fillRect(0, 0, cssW, cssH);
@@ -395,12 +438,64 @@
           g.fillStyle = acc; g.font = "800 " + Math.round(cssW * 0.12) + "px system-ui, sans-serif";
           g.fillText(String(score), cssW / 2, cssH * 0.4);
           g.fillStyle = "rgba(230,235,245,0.85)"; g.font = "700 " + Math.round(cssW * 0.04) + "px system-ui, sans-serif";
-          g.fillText("popped · best " + best, cssW / 2, cssH * 0.5);
+          g.fillText("popped · " + mode + " best " + modeBest(), cssW / 2, cssH * 0.5);
           g.fillStyle = "rgba(255,150,160,0.8)"; g.font = "600 " + Math.round(cssW * 0.03) + "px system-ui, sans-serif";
-          g.fillText(endReason, cssW / 2, cssH * 0.55);
+          g.fillText(endReason + (mode === "endless" ? " · survived " + Math.floor(elapsed / 1000) + "s" : ""), cssW / 2, cssH * 0.55);
           g.fillStyle = "rgba(200,205,230,0.6)"; g.font = "500 " + Math.round(cssW * 0.032) + "px system-ui, sans-serif";
-          g.fillText("click to squish again", cssW / 2, cssH * 0.63);
+          g.fillText("click to pick a mode", cssW / 2, cssH * 0.63);
         }
+      }
+
+      // ---- mode select: two cards, click one to start ----
+      function drawMenu(acc) {
+        g.fillStyle = "rgba(6,8,14,0.55)"; g.fillRect(0, 0, cssW, cssH);
+        g.textAlign = "center"; g.textBaseline = "middle";
+        g.fillStyle = acc; g.font = "800 " + Math.round(cssW * 0.09) + "px system-ui, sans-serif";
+        g.shadowColor = "rgba(232,139,176,0.6)"; g.shadowBlur = 24;
+        g.fillText("Squish", cssW / 2, cssH * 0.2);
+        g.shadowBlur = 0;
+        g.fillStyle = "rgba(200,205,230,0.7)"; g.font = "500 " + Math.round(cssW * 0.03) + "px system-ui, sans-serif";
+        g.fillText("pick a mode", cssW / 2, cssH * 0.28);
+
+        const cards = [
+          { id: "timer", title: "Timer", lines: ["30 seconds", "pop as many as you can"], best: bestTimer, hue: HUES[0] },
+          { id: "endless", title: "Endless", lines: ["no clock · 3 lives", "ramps up the longer you last"], best: bestEndless, hue: "199,146,255" }
+        ];
+        menuRects = [];
+        const w = cssW * 0.38, h = cssH * 0.32, y = cssH * 0.37, gap = cssW * 0.04;
+        const x0 = (cssW - (w * 2 + gap)) / 2;
+        const t = performance.now();
+        cards.forEach((c, i) => {
+          const x = x0 + i * (w + gap);
+          menuRects.push({ id: c.id, x: x, y: y, w: w, h: h });
+          const breathe = 0.5 + 0.5 * Math.sin(t * 0.002 + i * 1.7);
+          g.save();
+          g.shadowColor = "rgba(" + c.hue + "," + (0.35 + breathe * 0.25) + ")"; g.shadowBlur = 22 + breathe * 10;
+          g.fillStyle = "rgba(" + c.hue + ",0.10)";
+          roundRect(x, y, w, h, cssW * 0.025); g.fill();
+          g.shadowBlur = 0;
+          g.strokeStyle = "rgba(" + c.hue + "," + (0.6 + breathe * 0.3) + ")"; g.lineWidth = 2;
+          roundRect(x, y, w, h, cssW * 0.025); g.stroke();
+          g.fillStyle = "rgba(" + c.hue + ",0.95)";
+          g.font = "800 " + Math.round(cssW * 0.052) + "px system-ui, sans-serif";
+          g.fillText(c.title, x + w / 2, y + h * 0.26);
+          g.fillStyle = "rgba(230,235,245,0.8)";
+          g.font = "500 " + Math.round(cssW * 0.024) + "px system-ui, sans-serif";
+          g.fillText(c.lines[0], x + w / 2, y + h * 0.5);
+          g.fillText(c.lines[1], x + w / 2, y + h * 0.62);
+          g.fillStyle = "rgba(200,205,230,0.6)";
+          g.font = "600 " + Math.round(cssW * 0.024) + "px system-ui, sans-serif";
+          g.fillText("best " + c.best, x + w / 2, y + h * 0.84);
+          g.restore();
+        });
+      }
+      function roundRect(x, y, w, h, r) {
+        g.beginPath();
+        g.moveTo(x + r, y); g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r);
+        g.lineTo(x + w, y + h - r); g.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        g.lineTo(x + r, y + h); g.quadraticCurveTo(x, y + h, x, y + h - r);
+        g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y);
+        g.closePath();
       }
 
       return {
@@ -418,20 +513,33 @@
           wrap.appendChild(canvas);
           const hint = document.createElement("div");
           hint.className = "hint";
-          hint.textContent = "Squish jelly before it crosses the line · don't click bombs · gold = extra life";
+          hint.textContent = "Squish jelly before it crosses the line · don't click bombs · gold = extra life · Timer or Endless";
           wrap.appendChild(hint);
           stage.appendChild(wrap);
 
           best = ctx.storage.best();
+          bestTimer = ctx.storage.get("best_timer", best);   // legacy best was always timer mode
+          bestEndless = ctx.storage.get("best_endless", 0);
           resize();
-          reset();
+          reset("timer");
+          phase = "menu";
           Arcade.input.setPointerTarget(canvas);
           draw();
           unResize = Arcade.board.onResize(function () { resize(); draw(); });
         },
         handleInput(intent) {
           if (intent.type !== "point" || intent.phase !== "down" || intent.button !== 0) return;
-          if (phase === "done") { reset(); return; }
+          if (phase === "done") { phase = "menu"; ctx.audio.soft(); return; }
+          if (phase === "menu") {
+            for (const r of (menuRects || [])) {
+              if (intent.x >= r.x && intent.x <= r.x + r.w && intent.y >= r.y && intent.y <= r.y + r.h) {
+                reset(r.id);
+                ctx.audio.tone(520, 0.12, { type: "sine", vol: 0.12, glide: 780 });
+                return;
+              }
+            }
+            return;
+          }
           // hit-test topmost blob under the click (generous — jelly is forgiving)
           for (let i = blobs.length - 1; i >= 0; i--) {
             const bl = blobs[i];
