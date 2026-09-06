@@ -143,9 +143,19 @@
         });
       }
 
-      // browser speech (no files, no network): says the noise AND the animal, so it's unmistakable
-      const NOISE = { cow: "Moo! Cow.", sheep: "Baa! Sheep.", duck: "Quack quack! Duck.", dog: "Woof woof! Dog.", cat: "Meow! Cat.", pig: "Oink oink! Pig." };
-      function speak(kind) { if (window.Arcade && Arcade.voice) Arcade.voice.say(NOISE[kind]); }
+      // REAL animal recordings (audio/animals/<kind>.mp3, from Wikimedia Commons — see CREDITS.md).
+      // The synthesized voice() below is only the fallback if a clip can't load.
+      const clips = {};
+      function realSound(kind) {
+        if (ctx.audio.muted) return false;
+        let el = clips[kind];
+        if (!el) { el = clips[kind] = new Audio("audio/animals/" + kind + ".mp3"); el.preload = "auto"; }
+        const node = el.cloneNode(); node.volume = 0.9;
+        node.onerror = function () { voice(kind); };
+        const p = node.play();
+        if (p && p.catch) p.catch(function () { voice(kind); });
+        return true;
+      }
       // each animal's synthesized voice — layered sawtooth/triangle "formants" with
       // pitch bends and vibrato so they read as the real animal, not a beep.
       function vib(f, dur, opts) {
@@ -209,7 +219,7 @@
       function tap(a) {
         taps++; ctx.setScore(taps);
         a.sq = 1;
-        if (now - a.lastVoice > 220) { a.lastVoice = now; voice(a.kind); setTimeout(function () { if (ctx) speak(a.kind); }, 350); }
+        if (now - a.lastVoice > 260) { a.lastVoice = now; realSound(a.kind); }
         const n = reduced ? 3 : 6;
         for (let i = 0; i < n; i++) {
           floaties.push({ x: a.x + (Math.random() - 0.5) * a.r * 1.4, y: a.y - a.r * 0.6, vx: (Math.random() - 0.5) * S * 0.00008, vy: -S * (0.00018 + Math.random() * 0.00012),
@@ -296,7 +306,6 @@
         tick(dt) { update(Math.min(50, dt)); draw(); },
         getScore() { return taps; },
         teardown() {
-          if (window.Arcade && Arcade.voice) Arcade.voice.stop();
           if (unResize) unResize(); unResize = null;
           stageEl = ctx = canvas = g = null; animals = []; floaties = []; confetti = [];
         }

@@ -99,8 +99,7 @@
         g.strokeStyle = "rgba(127,224,160,0.7)"; g.lineWidth = 2; g.stroke();
         g.fillStyle = "#e6ecf5"; g.beginPath(); g.moveTo(sx - sr * 0.45, sy - sr * 0.22); g.lineTo(sx - sr * 0.15, sy - sr * 0.22); g.lineTo(sx + sr * 0.15, sy - sr * 0.5); g.lineTo(sx + sr * 0.15, sy + sr * 0.5); g.lineTo(sx - sr * 0.15, sy + sr * 0.22); g.lineTo(sx - sr * 0.45, sy + sr * 0.22); g.closePath(); g.fill();
         g.strokeStyle = "#e6ecf5"; g.lineWidth = 2; g.beginPath(); g.arc(sx + sr * 0.2, sy, sr * 0.35, -0.9, 0.9); g.stroke(); g.beginPath(); g.arc(sx + sr * 0.2, sy, sr * 0.6, -0.9, 0.9); g.stroke(); g.restore();
-        // the ask, as pictures: a small target shape in the speaker's color hint (no reading needed)
-        if (target) { g.save(); g.translate(S * 0.62, S * 0.09); g.fillStyle = target.col.c; g.shadowColor = target.col.c; g.shadowBlur = S * 0.02; shapePath(g, target.shape, S * 0.03); g.fill(); g.restore(); }
+        // listening only: no visual hint of the target (George's call) — the speaker button repeats the ask
         // cards
         const sl = slots();
         cards.forEach(function (c, i) {
