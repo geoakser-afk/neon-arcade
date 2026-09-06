@@ -1,8 +1,10 @@
 /* Squish — a smooth, tactile 30-second burst. Soft neon jelly blobs drift up;
    click one to SQUISH it — it wobbles, flattens, and pops into droplets with a
    satisfying boing. Chain quick pops for a combo. A glowing line guards the
-   top: any blob that drifts past it costs a life. Three lives, 30 seconds —
-   lose all three and the round ends early. */
+   top: any jelly that drifts past it costs a life. Three lives, 30 seconds —
+   lose all three and the round ends early. Bomb blobs (dark, red fuse) explode
+   if you click them (-1 life) — let those float away. Rare gold jelly gives a
+   life back (or bonus points at full health). */
 (function () {
   Arcade.register({
     id: "squish",
@@ -18,7 +20,11 @@
 
       let phase;             // "play" | "done"
       let blobs, drips, score, best, timeLeft, combo, comboT, spawnT, popFlash;
-      let lives, lifeFlash, endReason;
+      let lives, lifeFlash, endReason, goldFlash, shake, toasts, elapsed;
+      const BOMB_CHANCE = 0.17;   // share of spawns that are bombs (after the opening seconds)
+      const GOLD_CHANCE = 0.06;   // share of spawns that are gold jelly
+      const GOLD_HUE = "255,214,110";
+      const BOMB_HUE = "255,96,110";
       const ROUND = 30000;   // 30s burst
       const LIVES = 3;
       const LINE_FRAC = 0.14;   // danger line sits this far down from the top
@@ -41,6 +47,7 @@
         blobs = []; drips = []; score = 0; combo = 0; comboT = 0;
         timeLeft = ROUND; spawnT = 0; popFlash = 0;
         lives = LIVES; lifeFlash = 0; endReason = "";
+        goldFlash = 0; shake = 0; toasts = []; elapsed = 0;
         ctx.setScore(0);
       }
 
@@ -49,13 +56,24 @@
         // tap target (~44px). Desktop keeps the original smaller/denser blobs.
         const portrait = window.innerWidth < 720;
         const base = portrait ? 0.075 : 0.045;
-        const r = cssW * (base + Math.random() * 0.05);
-        const hue = HUES[Math.floor(Math.random() * HUES.length)];
+        let r = cssW * (base + Math.random() * 0.05);
+        // kind: plain jelly, a bomb (don't click!), or rare gold (extra life)
+        let kind = "jelly";
+        if (elapsed > 2500) {
+          const roll = Math.random();
+          if (roll < BOMB_CHANCE) kind = "bomb";
+          else if (roll < BOMB_CHANCE + GOLD_CHANCE) kind = "gold";
+        }
+        let hue = HUES[Math.floor(Math.random() * HUES.length)];
+        let vy = -cssH * (0.00016 + Math.random() * 0.00013);   // drift up (~1.5x the old drift)
+        if (kind === "bomb") { hue = BOMB_HUE; r *= 0.95; }
+        if (kind === "gold") { hue = GOLD_HUE; r *= 0.85; vy *= 1.35; }   // gold is small + quick
         blobs.push({
+          kind: kind,
           x: r + Math.random() * (cssW - r * 2),
           y: cssH + r,
           r: r, hue: hue,
-          vy: -cssH * (0.00016 + Math.random() * 0.00013),   // drift up (~1.5x the old drift)
+          vy: vy,
           vx: (Math.random() * 2 - 1) * cssW * 0.00003,
           wob: Math.random() * Math.PI * 2,                   // wobble phase
           wobA: 0,                                            // wobble amplitude (kick on near-miss/hover)
@@ -64,11 +82,22 @@
         });
       }
 
+      function toast(x, y, text, hue) { toasts.push({ x: x, y: y, text: text, hue: hue, life: 1 }); }
+
       function popBlob(bl) {
         bl.dead = true;
         combo++; comboT = 900;
         const mult = 1 + Math.floor(combo / 4);
-        score += mult; ctx.setScore(score);
+        let gain = mult;
+        if (bl.kind === "gold") {
+          // gold: +3 bonus and a life back (or +2 more points if already full)
+          gain += 3;
+          if (lives < LIVES) { lives++; toast(bl.x, bl.y - bl.r, "+1 life", GOLD_HUE); }
+          else { gain += 2; toast(bl.x, bl.y - bl.r, "+" + gain, GOLD_HUE); }
+          goldFlash = 1;
+          ctx.audio.chord([660, 880, 1320], 0.35, { type: "sine", vol: 0.12, attack: 0.01 });
+        }
+        score += gain; ctx.setScore(score);
         if (score > best) best = score;
         popFlash = 0.5;
         // boing: pitch rises with combo
@@ -81,8 +110,37 @@
         }
       }
 
+      // clicked a bomb: it detonates, shakes the board, and takes a life
+      function detonate(bl) {
+        bl.dead = true;
+        bl.squish = 0.2;
+        lives--;
+        lifeFlash = 1; shake = 1;
+        combo = 0; comboT = 0;
+        toast(bl.x, bl.y - bl.r, "-1 life", BOMB_HUE);
+        ctx.audio.tone(90, 0.42, { type: "sawtooth", vol: 0.16, glide: 30 });
+        ctx.audio.tone(60, 0.5, { type: "triangle", vol: 0.14, glide: 20 });
+        const n = reduced ? 8 : 22;
+        for (let i = 0; i < n; i++) {
+          const a = Math.random() * Math.PI * 2, sp = bl.r * (0.05 + Math.random() * 0.10);
+          drips.push({ x: bl.x, y: bl.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: bl.r * (0.10 + Math.random() * 0.18), hue: i % 3 ? BOMB_HUE : "255,200,120", life: 1 });
+        }
+        if (lives <= 0) { lives = 0; endReason = "kaboom"; end(); }
+      }
+
+      // a bomb that drifts off the top just fizzles — no penalty for letting it go
+      function fizzle(bl) {
+        bl.dead = true;
+        bl.squish = 0.5;
+        ctx.audio.tone(220, 0.08, { type: "sine", vol: 0.04, glide: 160 });
+        for (let i = 0; i < 4; i++) {
+          drips.push({ x: bl.x, y: bl.y, vx: (Math.random() - 0.5) * bl.r * 0.02, vy: -bl.r * 0.02, r: bl.r * 0.1, hue: "160,160,170", life: 0.6 });
+        }
+      }
+
       // a blob slipped past the danger line: it bursts red, you lose a life
       function escapeBlob(bl) {
+        if (bl.kind === "bomb") { fizzle(bl); return; }
         bl.dead = true;
         bl.squish = 0.35;
         lives--;
@@ -108,6 +166,10 @@
       function update(dt) {
         if (popFlash > 0) popFlash = Math.max(0, popFlash - dt / 300);
         if (lifeFlash > 0) lifeFlash = Math.max(0, lifeFlash - dt / 550);
+        if (goldFlash > 0) goldFlash = Math.max(0, goldFlash - dt / 500);
+        if (shake > 0) shake = Math.max(0, shake - dt / 420);
+        for (const t of toasts) { t.y -= dt * cssH * 0.00006; t.life -= dt / 1100; }
+        for (let i = toasts.length - 1; i >= 0; i--) if (toasts[i].life <= 0) toasts.splice(i, 1);
         if (comboT > 0) { comboT -= dt; if (comboT <= 0) combo = 0; }
 
         // droplets always animate
@@ -119,7 +181,7 @@
 
         if (phase !== "play") return;
 
-        timeLeft -= dt;
+        timeLeft -= dt; elapsed += dt;
         if (timeLeft <= 0) { timeLeft = 0; end(); return; }
 
         // spawn cadence quickens slightly as time runs down for a fun finish
@@ -163,19 +225,55 @@
         }
         g.closePath();
         const alpha = bl.dead ? (1 - bl.squish) : 1;
-        const grad = g.createRadialGradient(-bl.r * 0.3, -bl.r * 0.3, bl.r * 0.1, 0, 0, bl.r * 1.1);
-        grad.addColorStop(0, "rgba(" + bl.hue + "," + (0.55 * alpha) + ")");
-        grad.addColorStop(1, "rgba(" + bl.hue + "," + (0.14 * alpha) + ")");
-        g.shadowColor = "rgba(" + bl.hue + "," + (0.6 * alpha) + ")"; g.shadowBlur = 20;
-        g.fillStyle = grad; g.fill();
-        g.shadowBlur = 0;
-        g.strokeStyle = "rgba(" + bl.hue + "," + (0.8 * alpha) + ")"; g.lineWidth = 2;
-        g.stroke();
-        // glossy highlight
-        if (!bl.dead) {
-          g.beginPath();
-          g.ellipse(-bl.r * 0.3, -bl.r * 0.35, bl.r * 0.26, bl.r * 0.16, -0.5, 0, Math.PI * 2);
-          g.fillStyle = "rgba(255,255,255,0.35)"; g.fill();
+        const pulse = 0.5 + 0.5 * Math.sin(bl.wob * 2.2);
+        if (bl.kind === "bomb") {
+          // bomb: dark body, red-hot rim that pulses, a lit fuse on top
+          const grad = g.createRadialGradient(-bl.r * 0.3, -bl.r * 0.3, bl.r * 0.1, 0, 0, bl.r * 1.1);
+          grad.addColorStop(0, "rgba(70,40,52," + (0.95 * alpha) + ")");
+          grad.addColorStop(1, "rgba(30,14,22," + (0.9 * alpha) + ")");
+          g.shadowColor = "rgba(" + BOMB_HUE + "," + ((0.45 + pulse * 0.4) * alpha) + ")"; g.shadowBlur = 16 + pulse * 14;
+          g.fillStyle = grad; g.fill();
+          g.shadowBlur = 0;
+          g.strokeStyle = "rgba(" + BOMB_HUE + "," + ((0.65 + pulse * 0.35) * alpha) + ")"; g.lineWidth = 2.5;
+          g.stroke();
+          if (!bl.dead) {
+            // fuse + spark
+            g.strokeStyle = "rgba(220,200,180," + (0.8 * alpha) + ")"; g.lineWidth = Math.max(2, bl.r * 0.08);
+            g.beginPath(); g.moveTo(bl.r * 0.1, -bl.r * 0.85); g.quadraticCurveTo(bl.r * 0.35, -bl.r * 1.25, bl.r * 0.55, -bl.r * 1.2); g.stroke();
+            g.fillStyle = "rgba(255,230,140," + ((0.7 + pulse * 0.3) * alpha) + ")";
+            g.shadowColor = "rgba(255,200,120,0.9)"; g.shadowBlur = 12;
+            g.beginPath(); g.arc(bl.r * 0.55, -bl.r * 1.2, bl.r * (0.09 + pulse * 0.05), 0, Math.PI * 2); g.fill();
+            g.shadowBlur = 0;
+            // little "!" so it reads as danger even at a glance
+            g.fillStyle = "rgba(" + BOMB_HUE + "," + (0.9 * alpha) + ")";
+            g.font = "800 " + Math.round(bl.r * 0.9) + "px system-ui, sans-serif";
+            g.textAlign = "center"; g.textBaseline = "middle";
+            g.fillText("!", 0, bl.r * 0.05);
+          }
+        } else {
+          const gold = bl.kind === "gold";
+          const grad = g.createRadialGradient(-bl.r * 0.3, -bl.r * 0.3, bl.r * 0.1, 0, 0, bl.r * 1.1);
+          grad.addColorStop(0, "rgba(" + bl.hue + "," + ((gold ? 0.8 : 0.55) * alpha) + ")");
+          grad.addColorStop(1, "rgba(" + bl.hue + "," + ((gold ? 0.3 : 0.14) * alpha) + ")");
+          g.shadowColor = "rgba(" + bl.hue + "," + ((gold ? 0.9 : 0.6) * alpha) + ")"; g.shadowBlur = gold ? 26 + pulse * 10 : 20;
+          g.fillStyle = grad; g.fill();
+          g.shadowBlur = 0;
+          g.strokeStyle = "rgba(" + bl.hue + "," + (0.8 * alpha) + ")"; g.lineWidth = 2;
+          g.stroke();
+          // glossy highlight
+          if (!bl.dead) {
+            g.beginPath();
+            g.ellipse(-bl.r * 0.3, -bl.r * 0.35, bl.r * 0.26, bl.r * 0.16, -0.5, 0, Math.PI * 2);
+            g.fillStyle = "rgba(255,255,255," + (gold ? 0.55 : 0.35) + ")"; g.fill();
+            if (gold) {
+              // sparkle: a small four-point star that twinkles
+              const sz = bl.r * (0.18 + pulse * 0.1);
+              g.fillStyle = "rgba(255,255,255," + (0.6 + pulse * 0.4) + ")";
+              g.beginPath();
+              g.moveTo(bl.r * 0.35, -bl.r * 0.1 - sz); g.lineTo(bl.r * 0.35 + sz * 0.3, -bl.r * 0.1); g.lineTo(bl.r * 0.35, -bl.r * 0.1 + sz); g.lineTo(bl.r * 0.35 - sz * 0.3, -bl.r * 0.1);
+              g.closePath(); g.fill();
+            }
+          }
         }
         g.restore();
       }
@@ -189,6 +287,13 @@
         bg.addColorStop(1, "rgba(232,139,176,0.01)");
         g.fillStyle = bg; g.fillRect(0, 0, cssW, cssH);
 
+        // explosion shake
+        g.save();
+        if (shake > 0 && !reduced) {
+          const now = performance.now();
+          g.translate(Math.sin(now * 0.08) * shake * shake * cssW * 0.02, Math.cos(now * 0.1) * shake * shake * cssH * 0.014);
+        }
+
         for (const bl of blobs) drawBlob(bl);
 
         // droplets
@@ -199,10 +304,35 @@
         }
         g.globalAlpha = 1;
 
+        // floating toasts (+1 life / -1 life / bonus)
+        for (const t of toasts) {
+          g.globalAlpha = Math.max(0, Math.min(1, t.life * 1.5));
+          g.fillStyle = "rgba(" + t.hue + ",0.95)";
+          g.shadowColor = "rgba(" + t.hue + ",0.8)"; g.shadowBlur = 10;
+          g.font = "800 " + Math.round(cssW * 0.034) + "px system-ui, sans-serif";
+          g.textAlign = "center"; g.textBaseline = "middle";
+          g.fillText(t.text, Math.min(cssW - cssW * 0.08, Math.max(cssW * 0.08, t.x)), t.y);
+          g.shadowBlur = 0;
+        }
+        g.globalAlpha = 1;
+        g.restore();   // end shake
+
         // pop flash
         if (popFlash > 0) {
           g.fillStyle = "rgba(255,255,255," + (popFlash * 0.08) + ")";
           g.fillRect(0, 0, cssW, cssH);
+        }
+        // gold flash
+        if (goldFlash > 0) {
+          g.fillStyle = "rgba(" + GOLD_HUE + "," + (goldFlash * 0.10) + ")";
+          g.fillRect(0, 0, cssW, cssH);
+        }
+        // bomb flash: red vignette pulse
+        if (shake > 0) {
+          const v = g.createRadialGradient(cssW / 2, cssH / 2, cssW * 0.3, cssW / 2, cssH / 2, cssW * 0.75);
+          v.addColorStop(0, "rgba(255,96,110,0)");
+          v.addColorStop(1, "rgba(255,96,110," + (0.35 * shake) + ")");
+          g.fillStyle = v; g.fillRect(0, 0, cssW, cssH);
         }
 
         // danger line — glows red for a moment after a life is lost
@@ -288,7 +418,7 @@
           wrap.appendChild(canvas);
           const hint = document.createElement("div");
           hint.className = "hint";
-          hint.textContent = "Squish the jelly before it crosses the line · 3 lives · 30 seconds";
+          hint.textContent = "Squish jelly before it crosses the line · don't click bombs · gold = extra life";
           wrap.appendChild(hint);
           stage.appendChild(wrap);
 
@@ -307,7 +437,10 @@
             const bl = blobs[i];
             if (bl.dead) continue;
             const dx = intent.x - bl.x, dy = intent.y - bl.y;
-            if (dx * dx + dy * dy <= (bl.r * 1.15) * (bl.r * 1.15)) { popBlob(bl); return; }
+            if (dx * dx + dy * dy <= (bl.r * 1.15) * (bl.r * 1.15)) {
+              if (bl.kind === "bomb") detonate(bl); else popBlob(bl);
+              return;
+            }
           }
           // miss — tiny wobble on nearby blobs, breaks combo
           combo = 0;
@@ -319,7 +452,7 @@
           if (unResize) unResize();
           unResize = null;
           stageEl = ctx = canvas = g = null;
-          blobs = drips = null;
+          blobs = drips = toasts = null;
         }
       };
     }
