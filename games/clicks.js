@@ -30,7 +30,8 @@
     create() {
       let stageEl, ctx, root, pad, big, live, sub, modeBar, result, styleEl, canvas, g;
       let mode = MODES[0], state = "idle", t0 = 0, count = 0, times = [], best = 0, raf = null, unResize = null;
-      let ripples = [], listeners = [], lastTick = 0;
+      let ripples = [], listeners = [], lastTick = 0, doneAt = 0;
+      const COOLDOWN = 1500;   // ms after a result during which input is ignored (so spam can't click through your score)
 
       const fmt = (n) => (Math.round(n * 100) / 100).toFixed(2);
       function on(el, ev, fn, opts) { el.addEventListener(ev, fn, opts); listeners.push([el, ev, fn, opts]); }
@@ -43,11 +44,16 @@
         result.innerHTML = best ? '<span class="cs-dim">best</span> ' + (m.target ? fmt(best) + " s" : fmt(best) + " cps") : "";
         pad.focus();
       }
-      function reset() { state = "idle"; count = 0; times = []; t0 = 0; big.textContent = "0"; live.textContent = mode.kind === "wheel" ? "ticks / sec" : "clicks / sec"; pad.classList.remove("done"); }
+      function reset() { state = "idle"; count = 0; times = []; t0 = 0; big.textContent = "0"; live.textContent = mode.kind === "wheel" ? "ticks / sec" : "clicks / sec"; pad.classList.remove("done"); pad.classList.remove("cool"); }
 
       function hit(x, y) {
-        if (state === "done") { reset(); result.innerHTML = best ? '<span class="cs-dim">best</span> ' + (mode.target ? fmt(best) + " s" : fmt(best) + " cps") : ""; }
         const now = performance.now();
+        if (state === "done") {
+          if (now - doneAt < COOLDOWN) return;                       // still cooling down: swallow the click
+          reset(); pad.classList.remove("cool");                      // first click after the cooldown only re-arms; the next one starts
+          result.innerHTML = best ? '<span class="cs-dim">best</span> ' + (mode.target ? fmt(best) + " s" : fmt(best) + " cps") : "";
+          return;
+        }
         if (state === "idle") { state = "run"; t0 = now; }
         count++; times.push(now);
         ctx.setScore(count);
@@ -56,7 +62,7 @@
         if (mode.target && count >= mode.target) finish(now);
       }
       function finish(now) {
-        state = "done"; pad.classList.add("done");
+        state = "done"; doneAt = performance.now(); pad.classList.add("done"); pad.classList.add("cool");
         const secs = mode.target ? (now - t0) / 1000 : mode.dur / 1000;
         const cps = count / Math.max(0.001, secs);
         // peak burst = most inputs inside any 1-second window
@@ -73,12 +79,13 @@
           '<b>' + count + '</b> ' + (mode.kind === "wheel" ? "ticks" : mode.kind === "key" ? "taps" : "clicks") + (mode.target ? "" : " in " + secs + " s") +
           ' · <b>' + fmt(cps) + '</b> cps · peak <b>' + peak + '</b>/s' +
           '<div class="cs-rate">' + rating(cps, mode.kind) + (isBest ? ' · <span class="cs-new">new best!</span>' : ' · <span class="cs-dim">best ' + (mode.target ? fmt(best) + " s" : fmt(best) + " cps") + '</span>') + '</div>' +
-          '<div class="cs-dim">click the pad to go again</div>';
+          '<div class="cs-dim cs-again">wait…</div>';
         ctx.audio.arp(isBest ? [523, 659, 784, 1046] : [523, 659], { dur: 0.16, step: 0.08, vol: 0.1, type: "sine" });
       }
 
       function frame() {
         const now = performance.now();
+        if (state === "done" && pad.classList.contains("cool") && now - doneAt >= COOLDOWN) { pad.classList.remove("cool"); const a = result.querySelector(".cs-again"); if (a) a.textContent = "click the pad to reset, then click to go again"; }
         if (state === "run") {
           const el = now - t0;
           if (!mode.target && el >= mode.dur) finish(now);
@@ -97,6 +104,7 @@
           g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
           for (let i = ripples.length - 1; i >= 0; i--) { const q = ripples[i]; q.t += 16; const k = q.t / 420; if (k >= 1) { ripples.splice(i, 1); continue; } g.globalAlpha = 1 - k; g.strokeStyle = ctx.accent; g.lineWidth = 3; g.beginPath(); g.arc(q.x, q.y, 10 + k * 60, 0, Math.PI * 2); g.stroke(); }
           g.globalAlpha = 1;
+          if (state === "done" && now - doneAt < COOLDOWN) { const k = (now - doneAt) / COOLDOWN; g.strokeStyle = ctx.accent; g.globalAlpha = 0.6; g.lineWidth = 5; g.beginPath(); g.arc(r.width / 2, r.height * 0.86, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - k)); g.stroke(); g.globalAlpha = 1; }
           if (state === "run" && !mode.target) { g.fillStyle = ctx.accent; g.globalAlpha = 0.5; g.fillRect(0, r.height - 6, r.width * Math.min(1, (now - t0) / mode.dur), 6); g.globalAlpha = 1; }
         }
         raf = requestAnimationFrame(frame);
@@ -113,7 +121,7 @@
             ".cs-modes button small{display:block;opacity:.55;font-size:11px}" +
             ".cs-modes button.on{border-color:var(--accent);box-shadow:0 0 18px color-mix(in srgb,var(--accent) 40%,transparent);background:color-mix(in srgb,var(--accent) 16%,transparent)}" +
             ".cs-pad{position:relative;width:100%;aspect-ratio:16/9;max-height:52vh;border-radius:22px;background:rgba(255,255,255,.04);border:2px solid color-mix(in srgb,var(--accent) 45%,transparent);box-shadow:0 0 40px color-mix(in srgb,var(--accent) 18%,transparent) inset,0 0 30px color-mix(in srgb,var(--accent) 12%,transparent);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;outline:none;overflow:hidden}" +
-            ".cs-pad:active{transform:scale(.995)}.cs-pad.done{border-style:dashed}" +
+            ".cs-pad:active{transform:scale(.995)}.cs-pad.done{border-style:dashed}.cs-pad.cool{cursor:wait;opacity:.85}" +
             ".cs-pad canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}" +
             ".cs-big{font-size:clamp(56px,12vw,120px);font-weight:800;letter-spacing:-.02em;color:var(--accent);text-shadow:0 0 24px color-mix(in srgb,var(--accent) 55%,transparent);line-height:1;position:relative;font-variant-numeric:tabular-nums}" +
             ".cs-live{opacity:.7;font-size:15px;margin-top:8px;position:relative}" +
