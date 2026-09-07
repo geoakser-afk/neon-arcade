@@ -401,8 +401,8 @@
       let jumpFlash = 0;
       function strike(x, y) {
         if (p.dead || p.tongue || p.tcd > 0) return;
-        if (p.stam < 10 && !p.zip) { A().tone(300, 0.08, { type: "sine", vol: 0.04, glide: 200 }); fx.push({ kind: "txt", x: p.x, y: p.y - frogR() * 2, t: 0, dur: 700, text: "tired…", col: "#74b9ff" }); return; }
-        if (!p.zip) { p.stam -= 10; p.stamDelay = 700; }
+        if (p.stam < 10 && p.zip <= 0) { A().tone(300, 0.08, { type: "sine", vol: 0.04, glide: 200 }); fx.push({ kind: "txt", x: p.x, y: p.y - frogR() * 2, t: 0, dur: 700, text: "tired…", col: "#74b9ff" }); return; }
+        if (p.zip <= 0) { p.stam -= 10; p.stamDelay = 700; }
         const oy = p.y - frogR() * 0.05, dx = x - p.x, dy = y - oy, d = Math.hypot(dx, dy) || 1, max = tongueRange();
         let tx = dx / d * Math.min(d, max), ty = dy / d * Math.min(d, max);
         const L = Math.hypot(tx, ty), ux = tx / L, uy = ty / L;
@@ -723,18 +723,18 @@
             if (f.superHop > 0) { f.superHop -= dt; f.z *= 2.6; }
             if (k >= 1) { f.hop = null; f.z = 0; f.rest = 60; f.sq = 0.6; f.superHop = 0; const wp = pondAt(f.x, f.y); if (wp) { f.swim = 1; ripples.push({ x: f.x, y: f.y, t: 0, dur: 900, r: R * 3 }); A().tone(520, 0.1, { type: "sine", vol: 0.05, glide: 160 }); } else A().tone(140, 0.05, { type: "sine", vol: 0.05, glide: 90 }); }
           } else if (pond && dist > R * 0.4) {
-            if (!f.zip) { f.stam = Math.max(0, f.stam - dt * 0.001); f.stamDelay = 200; }
-            const sp = S * 0.00032 * (has("boots") ? 1.6 : 1) * slowK * (f.stam <= 0 && !f.zip ? 0.55 : 1), step = Math.min(dist, sp * dt);
+            if (f.zip <= 0) { f.stam = Math.max(0, f.stam - dt * 0.001); f.stamDelay = 200; }
+            const sp = S * 0.00032 * (has("boots") ? 1.6 : 1) * slowK * (f.stam <= 0 && f.zip <= 0 ? 0.55 : 1), step = Math.min(dist, sp * dt);
             f.x += dx / dist * step; f.y += dy / dist * step; f.face = Math.abs(dx) > S * 0.005 ? (dx < 0 ? -1 : 1) : f.face;
             f.kick += dt; if (f.kick > 420) { f.kick = 0; ripples.push({ x: f.x, y: f.y + R * 0.3, t: 0, dur: 800, r: R * 2.2 }); }
             f.swim = 1;
           } else if (dist > R * 0.4) {
             f.rest -= dt;
             if (f.rest <= 0) {
-              const len = Math.min(dist, hopLen() * slowK * (f.stam <= 0 && !f.zip ? 0.45 : 1));
+              const len = Math.min(dist, hopLen() * slowK * (f.stam <= 0 && f.zip <= 0 ? 0.45 : 1));
               f.hop = { x0: f.x, y0: f.y, x1: f.x + dx / dist * len, y1: f.y + dy / dist * len, t: 0, dur: 280 + len / S * 500 };
               if (Math.abs(dx) > S * 0.01) f.face = dx < 0 ? -1 : 1;
-              if (!f.zip) { f.stam = Math.max(0, f.stam - 1.5); f.stamDelay = 250; }
+              if (f.zip <= 0) { f.stam = Math.max(0, f.stam - 1.5); f.stamDelay = 250; }
               sndHop();
             }
           } else { f.swim = pond ? 1 : 0; if (f.goal && f.goal.type === "house") { const gl = f.goal; f.goal = null; enterHouse(gl.i); } else if (f.goal && f.goal.type === "npc") { const gl = f.goal; f.goal = null; talkTo(gl.npc, gl.x, gl.y); } else if (f.goal && f.goal.type === "chest") { const gl = f.goal; f.goal = null; openChest(gl.i, gl.k, gl.x, gl.y); } else if (f.goal && f.goal.type === "poi") { const gl = f.goal; f.goal = null; visitPoi(gl.i, gl.k, gl.pp); } else if (f.goal && f.goal.type === "smith") { const gl = f.goal; f.goal = null; panel = { kind: gl.kind }; sndClick(); } }
