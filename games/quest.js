@@ -516,7 +516,7 @@
           e.cd = 3400; e.tele = { t: 0, dur: 750, kind: "rise", fire: function () { e.z = 0; ring(e.x, e.y, 2); } };
         } else if (gk === "chomp") {             // directional chomp-wave along his facing; sometimes the whole pond surges
           if (Math.random() < 0.3) { e.cd = 4500; e.tele = { t: 0, dur: 1100, kind: "rise", fire: function () { hazards.push({ type: "surge", pond: pondAt(e.hx, e.hy), t: 0, dur: 900, dmg: 2 }); sndQuake(); shake = 14; toast("The pond surges — get out of the water!", "#74b9ff"); } }; }
-          else { e.cd = 2600; e.face = p.x < e.x ? -1 : 1; const ang = Math.atan2(p.y - e.y, p.x - e.x); e.tele = { t: 0, dur: 700, kind: "aim", ang: ang, fire: function () { e.lunge = 300; hazards.push({ type: "beam", x: e.x, y: e.y, ang: ang, len: 0, max: S * 1.1, speed: S * 0.0009, w: S * 0.07, dmg: 2, life: 1 }); A().tone(160, 0.2, { type: "sawtooth", vol: 0.1, glide: 80 }); shake = 8; } }; }
+          else { e.cd = 2600; e.face = p.x < e.x ? -1 : 1; const ang = Math.atan2(p.y - e.y, p.x - e.x); e.tele = { t: 0, dur: 700, kind: "aim", ang: ang, fire: function () { e.lunge = 300; e.lvx = 0; e.lvy = 0; hazards.push({ type: "beam", x: e.x, y: e.y, ang: ang, len: 0, max: S * 1.1, speed: S * 0.0009, w: S * 0.07, dmg: 2, life: 1 }); A().tone(160, 0.2, { type: "sawtooth", vol: 0.1, glide: 80 }); shake = 8; } }; }
         } else if (gk === "brood") {             // shielded while spiderlings live; webs on the ground
           e.shield = broodAlive() > 0 ? 500 : 0;
           if (broodAlive() === 0 && Math.random() < 0.5) { e.cd = 5000; e.tele = { t: 0, dur: 700, kind: "shake", fire: function () { for (let k = 0; k < 3; k++) { const a = k * 2.1, sp2 = spawnEnemyAt("spider", e.x + Math.cos(a) * S * 0.2, e.y + Math.sin(a) * S * 0.2, e.biome); sp2.spawned = true; sp2.def = Object.assign({}, sp2.def, { hp: 4, size: 0.6, gems: 6, tokens: 2, r: 0.04, speed: 0.00022 }); sp2.hp = sp2.hpMax = 4; } shake = 8; sndQuake(); toast("Silka's brood! Squash them to break her shield.", "#c9c3ff"); } }; }
@@ -587,6 +587,7 @@
       // Every enemy: notices you inside def.aggro, chases, gives up past def.leash and walks home.
       // Attacks are a wind-up (the enemy squishes for 350 ms) and then a bite that lands if you're still in reach.
       function updateEnemy(e, dt) {
+        if (!isFinite(e.x) || !isFinite(e.y)) { e.x = e.hx; e.y = e.hy; e.lunge = 0; e.charge = null; }
         if (e.dead) { if (e.slot >= 0 && now - e.deadT > 30000 && Math.hypot(e.hx - p.x, e.hy - p.y) > S * 1.2) { e.dead = 0; e.hp = e.hpMax; e.x = e.hx; e.y = e.hy; e.state = "idle"; } return; }
         const d = Math.max(0.001, Math.hypot(p.x - e.x, p.y - e.y)), def = e.def, R = def.r * S * (def.size || 1), sp = def.speed * S;
         e.t += dt; if (e.hurt > 0) e.hurt -= dt; if (e.shield > 0) e.shield -= dt; if (e.lunge > 0) e.lunge -= dt; if (e.stun > 0) { e.stun -= dt; if (e.sq === undefined) e.sq = 0; return; }
@@ -606,7 +607,7 @@
           const pd = pondAt(e.hx, e.hy), youSwim = !!pondAt(p.x, p.y);
           if (e.state === "chase" && youSwim) { if (d > R * 0.8) { e.x += (p.x - e.x) / d * sp * dt; e.y += (p.y - e.y) / d * sp * dt; } }
           else if (e.state === "chase" && d < S * 0.22 && e.cd <= 0 && e.lunge <= 0) { e.lunge = 500; e.cd = 1600; e.lvx = (p.x - e.x) / d * sp * 2; e.lvy = (p.y - e.y) / d * sp * 2; }
-          else if (e.lunge > 0) { e.x += e.lvx * dt; e.y += e.lvy * dt; }
+          else if (e.lunge > 0) { e.x += (e.lvx || 0) * dt; e.y += (e.lvy || 0) * dt; }
           else { e.x += Math.cos(e.t * 0.0004 + e.slot) * sp * 0.25 * dt; e.y += Math.sin(e.t * 0.0003 + e.slot) * sp * 0.25 * dt; }
           if (pd && !(e.isMini && e.lunge > 0)) { const dx = (e.x - pd.x) / pd.rx, dy = (e.y - pd.y) / pd.ry, q = Math.hypot(dx, dy); if (q > 0.95) { e.x = pd.x + dx / q * 0.93 * pd.rx; e.y = pd.y + dy / q * 0.93 * pd.ry; e.lunge = 0; } }
           e.face = p.x < e.x ? -1 : 1;
