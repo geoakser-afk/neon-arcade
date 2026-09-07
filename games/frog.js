@@ -95,7 +95,7 @@
     { kind: "snail", x: 0.30, y: 0.60, line: "Hi there!", pict: "heart" },
     { kind: "bee", x: 0.50, y: 0.55, line: "Buzz buzz! Sweet flowers.", pict: "flower" },
     { kind: "owl", x: 0.68, y: 0.12, line: "Whooo! Hello, friend!", pict: "moon" },
-    { kind: "bunny", x: 0.20, y: 0.22, line: "Hop hop! Let's race!", pict: "star" },
+    { kind: "bunny", x: 0.16, y: 0.21, line: "Hop hop! Let's race!", pict: "star" },
     { kind: "butterfly", x: 0.88, y: 0.50, line: "Look at my wings!", pict: "heart" },
     { kind: "ladybug", x: 0.45, y: 0.90, line: "Hi there!", pict: "flower" }
   ];
@@ -106,6 +106,7 @@
     { x: 0.86, y: 0.30, col: "#ffd36b", roof: "#c99a2e", toad: { body: "#e0a3ff", dark: "#9a5ec4", belly: "#f7e6ff" } }
   ];
   const HOUSE_LINES = ["Welcome to my house!", "Come in, come in!", "Hello, little frog!", "Have a nice hop!"];
+  const RACE = { x0: 0.08, x1: 0.44, y: 0.145 };   // the race track (world units): start flag at x0, finish at x1
   const TREES = [[0.08, 0.10], [0.30, 0.08], [0.67, 0.06], [0.93, 0.12], [0.06, 0.40], [0.95, 0.52], [0.05, 0.68], [0.40, 0.72], [0.93, 0.90], [0.60, 0.95], [0.34, 0.95], [0.72, 0.45]];
   const ROCKS = [[0.48, 0.44], [0.20, 0.70], [0.82, 0.86], [0.60, 0.62], [0.12, 0.92]];
   const SHROOMS = [[0.10, 0.18], [0.36, 0.14], [0.90, 0.20], [0.70, 0.90], [0.28, 0.48], [0.52, 0.70]];
@@ -131,7 +132,7 @@
       let S = 0, W = 0, dpr = 1, reduced = false, now = 0;
       let frog, cam, flies = [], animals = [], fx = [], ripples = [], bubble = null, eaten = 0;
       let scene = "world", house = -1, fade = 0, fadeDir = 0, pendingScene = null;
-      let hopSnd = 0, duckClip = null;
+      let hopSnd = 0, duckClip = null, race = null, press = null, touchDevice = false;
 
       function resize() {
         const oldS = S;
@@ -147,7 +148,7 @@
         cam = { x: frog.x - S / 2, y: frog.y - S / 2 };
         flies = []; for (let i = 0; i < 16; i++) spawnFly(i < 6 ? frog : null);
         animals = ANIMALS.map(function (a) { return Object.assign({}, a, { x: a.x * W, y: a.y * W, hx: a.x * W, hy: a.y * W, ph: Math.random() * TAU, t: 0, sq: 0, talk: 0, lastTalk: -9999 }); });
-        fx = []; ripples = []; bubble = null; scene = "world"; house = -1; fade = 0; fadeDir = 0; pendingScene = null;
+        fx = []; ripples = []; bubble = null; scene = "world"; house = -1; fade = 0; fadeDir = 0; pendingScene = null; race = null; press = null;
       }
       function spawnFly(near) {
         let x, y;
@@ -246,10 +247,46 @@
       let worldFlies = null, roomToad = null;
       function frogR() { return S * 0.055; }
 
+      // ---- the rabbit race ----
+      function raceStartPos() { return { x: RACE.x0 * W + S * 0.06, y: RACE.y * W + S * 0.075 }; }
+      function bunny() { return animals.find(function (a) { return a.kind === "bunny"; }); }
+      function startRace() {
+        const b = bunny(); if (!b) return;
+        race = { phase: "count", t: 0, beeps: 0, speed: S * (0.00016 + Math.random() * 0.0002), rx: RACE.x0 * W + S * 0.06, winner: null };
+        b.x = race.rx; b.y = RACE.y * W - S * 0.06; b.face = 1; b.z = 0;
+        frog.x = frog.tx = raceStartPos().x; frog.y = frog.ty = raceStartPos().y; frog.face = 1; frog.hop = null; frog.goal = null;
+        b.talk = 2200; b.sq = 1; bubble = { a: b, x: b.x, y: b.y, pict: "star", t: 0, dur: 2200 }; sndAnimal("bunny"); setTimeout(function () { if (ctx) say(b.line); }, 300);
+      }
+      function raceClick() {
+        if (!race || race.phase !== "run" || frog.hop) return;
+        const len = S * 0.07; frog.hop = { x0: frog.x, y0: frog.y, x1: frog.x + len, y1: frog.y, t: 0, dur: 170 }; frog.tx = frog.x + len; frog.ty = frog.y; frog.face = 1; sndHop();
+      }
+      function updateRace(dt) {
+        const r = race, b = bunny(), fin = RACE.x1 * W;
+        r.t += dt;
+        if (r.phase === "count") {
+          const step = Math.floor(r.t / 700);
+          if (step > r.beeps) { r.beeps = step; if (step < 3) { ctx.audio.tone(520, 0.14, { type: "sine", vol: 0.12 }); fx.push({ kind: "ring", x: frog.x + S * 0.1, y: RACE.y * W, t: 0, dur: 500 }); } else { ctx.audio.tone(1040, 0.35, { type: "sine", vol: 0.14 }); r.phase = "run"; r.t = 0; fx.push({ kind: "ring", x: frog.x + S * 0.1, y: RACE.y * W, t: 0, dur: 700, big: true }); } }
+          b.x = r.rx; b.z = Math.abs(Math.sin(r.t * 0.008)) * 0.4;
+        } else if (r.phase === "run") {
+          r.rx += r.speed * dt; b.x = r.rx; b.z = Math.abs(Math.sin(r.t * 0.012)); b.face = 1;
+          if (frog.x >= fin || r.rx >= fin) {
+            r.phase = "done"; r.t = 0; r.winner = frog.x >= fin && !(r.rx >= fin && r.rx > frog.x) ? "frog" : "bunny";
+            if (r.winner === "frog") { confetti(frog.x, frog.y - frogR()); ctx.audio.arp([523, 659, 784, 1046, 1318], { dur: 0.2, step: 0.08, vol: 0.12, type: "sine" }); frog.happy = 3000; setTimeout(function () { if (ctx) say("Great job!"); }, 500); }
+            else { b.sq = 1; b.talk = 2000; bubble = { a: b, x: b.x, y: b.y, pict: "star", t: 0, dur: 2000 }; confetti(b.x, b.y - S * 0.06); ctx.audio.arp([784, 988, 1175], { dur: 0.14, step: 0.08, vol: 0.1, type: "sine" }); setTimeout(function () { if (ctx) say("Try again!"); }, 500); }
+          }
+        } else if (r.phase === "done") {
+          b.z = Math.abs(Math.sin(r.t * 0.008)) * (r.winner === "bunny" ? 0.8 : 0.2);
+          if (r.t > 2600) { race = null; b.t = 0; }
+        }
+      }
+
       // ---- update ----
       function update(dt) {
         now += dt;
         if (fadeDir) { fade += fadeDir * dt / 260; if (fade >= 1) { fade = 1; if (pendingScene) applyScene(); fadeDir = -1; } if (fade <= 0) { fade = 0; fadeDir = 0; } }
+        if (press && !press.done && now - press.t > 380 && touchDevice) { press.done = true; shootTongue(press.wx, press.wy); }
+        if (race) updateRace(dt);
         // frog movement: hop toward target (swim when in a pond)
         const f = frog, R = frogR();
         f.blink -= dt; if (f.blink < -2600 - Math.random() * 2000) f.blink = 160;
@@ -277,7 +314,7 @@
           }
         } else {
           f.swim = pond ? 1 : 0;
-          if (f.goal) { const gl = f.goal; f.goal = null; if (gl.type === "animal") talk(gl.a); else if (gl.type === "house") enterHouse(gl.i); else if (gl.type === "door") leaveHouse(); else if (gl.type === "toad") toadTalk(); }
+          if (f.goal) { const gl = f.goal; f.goal = null; if (gl.type === "animal") talk(gl.a); else if (gl.type === "house") enterHouse(gl.i); else if (gl.type === "door") leaveHouse(); else if (gl.type === "toad") toadTalk(); else if (gl.type === "race") startRace(); }
         }
         if (!pond) f.swim = 0;
         // tongue
@@ -300,7 +337,7 @@
           if (a.kind === "duck") { const p = PONDS[a.pond]; a.x = p.x * W + Math.cos(a.t * 0.0004 + a.ph) * p.rx * W * 0.55; a.y = p.y * W + Math.sin(a.t * 0.0004 + a.ph) * p.ry * W * 0.55; a.face = Math.cos(a.t * 0.0004 + a.ph + 1.57) < 0 ? -1 : 1; if (Math.floor(a.t / 700) !== Math.floor((a.t - dt) / 700)) ripples.push({ x: a.x, y: a.y + S * 0.02, t: 0, dur: 1200, r: S * 0.09 }); }
           else if (a.kind === "bee") { a.x = a.hx + Math.cos(a.t * 0.0012) * S * 0.16; a.y = a.hy + Math.sin(a.t * 0.0024) * S * 0.08; a.face = Math.sin(a.t * 0.0012) > 0 ? -1 : 1; }
           else if (a.kind === "butterfly") { a.x = a.hx + Math.sin(a.t * 0.0007) * S * 0.2; a.y = a.hy + Math.sin(a.t * 0.0019) * S * 0.12; a.face = Math.cos(a.t * 0.0007) < 0 ? -1 : 1; }
-          else if (a.kind === "bunny") { const ph = (a.t % 2600) / 2600; a.z = ph < 0.3 ? Math.sin(ph / 0.3 * Math.PI) : 0; a.x = a.hx + Math.sin(a.t * 0.0005) * S * 0.18; a.face = Math.cos(a.t * 0.0005) < 0 ? -1 : 1; }
+          else if (a.kind === "bunny") { if (race) return; const ph = (a.t % 2600) / 2600; a.z = ph < 0.3 ? Math.sin(ph / 0.3 * Math.PI) : 0; a.x = a.hx + Math.sin(a.t * 0.0005) * S * 0.18; a.face = Math.cos(a.t * 0.0005) < 0 ? -1 : 1; }
           else if (a.kind === "snail" || a.kind === "turtle" || a.kind === "ladybug") { a.x = a.hx + Math.sin(a.t * 0.00025 + a.ph) * S * 0.1; a.face = Math.cos(a.t * 0.00025 + a.ph) < 0 ? -1 : 1; }
         });
         if (roomToad) { if (roomToad.sq > 0) roomToad.sq = Math.max(0, roomToad.sq - dt / 400); if (roomToad.talk > 0) roomToad.talk -= dt; }
@@ -331,6 +368,17 @@
         dot(g, x, y - R * 0.8, R * 0.72); dot(g, x - R * 0.5, y - R * 0.45, R * 0.55); dot(g, x + R * 0.5, y - R * 0.5, R * 0.55); g.shadowBlur = 0;
         g.fillStyle = "#2f8a5e"; dot(g, x - R * 0.2, y - R * 0.95, R * 0.28); dot(g, x + R * 0.35, y - R * 0.75, R * 0.2);
         if (i % 3 === 0) { g.fillStyle = "#ff6b8a"; dot(g, x + R * 0.1, y - R * 0.5, R * 0.07); dot(g, x - R * 0.45, y - R * 0.8, R * 0.07); dot(g, x + R * 0.55, y - R * 0.3, R * 0.07); }
+      }
+      // start flag (pulses so it looks tappable) / finish flag
+      function drawFlag(x, y, start) {
+        const h = S * 0.2;
+        if (start && !race) { const k = 0.5 + 0.5 * Math.sin(now * 0.004); g.fillStyle = "rgba(255,211,107," + (0.12 + k * 0.12) + ")"; dot(g, x + S * 0.02, y + h * 0.5, S * 0.09 + k * S * 0.015); }
+        g.fillStyle = "#e6ecf5"; rr(g, x - S * 0.006, y, S * 0.012, h, S * 0.004); g.fill();
+        const w = S * 0.1, fh = S * 0.07, wave = Math.sin(now * 0.005) * S * 0.006;
+        g.save(); g.beginPath(); g.moveTo(x, y); g.lineTo(x + w, y + wave); g.lineTo(x + w, y + fh + wave); g.lineTo(x, y + fh); g.closePath(); g.clip();
+        if (start) { g.fillStyle = "#ffd36b"; g.shadowColor = "#ffd36b"; g.shadowBlur = S * 0.02; g.fillRect(x, y - S * 0.01, w, fh + S * 0.03); g.shadowBlur = 0; g.save(); g.translate(x + w * 0.5, y + fh * 0.5); PICT.star(g, fh * 0.34); g.restore(); }
+        else { for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) { g.fillStyle = (i + j) % 2 ? "#fff" : "#2a2434"; g.fillRect(x + i * w / 4, y - S * 0.01 + j * (fh + S * 0.03) / 3, w / 4, (fh + S * 0.03) / 3); } }
+        g.restore();
       }
       function drawRock(x, y, s) { const R = S * 0.05 * s; g.fillStyle = "#4e4a66"; ell(g, x, y, R, R * 0.65); g.fill(); g.fillStyle = "#6b6689"; ell(g, x - R * 0.2, y - R * 0.2, R * 0.5, R * 0.28); g.fill(); }
       function drawShroom(x, y, s) { const R = S * 0.035 * s; g.fillStyle = "#f4e2c2"; rr(g, x - R * 0.3, y - R * 0.6, R * 0.6, R * 0.8, R * 0.2); g.fill(); g.fillStyle = "#ff6b6b"; g.shadowColor = "#ff6b6b"; g.shadowBlur = R * 0.4; g.beginPath(); g.arc(x, y - R * 0.6, R, Math.PI, 0); g.closePath(); g.fill(); g.shadowBlur = 0; g.fillStyle = "#fff"; dot(g, x - R * 0.4, y - R * 0.95, R * 0.14); dot(g, x + R * 0.3, y - R * 1.1, R * 0.16); dot(g, x + R * 0.55, y - R * 0.75, R * 0.1); }
@@ -387,6 +435,19 @@
         g.strokeStyle = "rgba(90,74,110,0.5)"; g.lineWidth = S * 0.07; g.lineCap = "round"; g.lineJoin = "round"; g.beginPath();
         const P = [[0.14, 0.58], [0.3, 0.5], [0.5, 0.45], [0.55, 0.3], [0.7, 0.32], [0.86, 0.38], [0.8, 0.55], [0.6, 0.72], [0.45, 0.85]];
         P.forEach(function (p, i) { const x = p[0] * W - cam.x, y = p[1] * W - cam.y; i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+        // race track: a light strip with a start flag and a checkered finish
+        { const x0 = RACE.x0 * W - cam.x, x1 = RACE.x1 * W - cam.x, y = RACE.y * W - cam.y, h = S * 0.13;
+          if (x1 > -S * 0.2 && x0 < S * 1.2 && y > -S * 0.3 && y < S * 1.3) {
+            g.fillStyle = "rgba(255,255,255,0.07)"; rr(g, x0, y - h, x1 - x0 + S * 0.08, h * 2, S * 0.03); g.fill();
+            g.strokeStyle = "rgba(255,255,255,0.25)"; g.lineWidth = Math.max(1, S * 0.004); g.setLineDash([S * 0.03, S * 0.03]); g.beginPath(); g.moveTo(x0, y); g.lineTo(x1 + S * 0.08, y); g.stroke(); g.setLineDash([]);
+            for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) { g.fillStyle = (i + j) % 2 ? "#fff" : "#2a2434"; g.fillRect(x1 + i * S * 0.015, y - h + j * h, S * 0.015, h); }   // finish line
+            g.fillStyle = "rgba(255,255,255,0.5)"; g.fillRect(x0 + S * 0.03, y - h, S * 0.006, h * 2);  // start line
+            if (race) { // progress bar above the track
+              g.fillStyle = "rgba(0,0,0,0.35)"; rr(g, x0, y - h - S * 0.06, x1 - x0, S * 0.03, S * 0.015); g.fill();
+              const k1 = (frog.x - RACE.x0 * W) / (RACE.x1 * W - RACE.x0 * W), k2 = (race.rx - RACE.x0 * W) / (RACE.x1 * W - RACE.x0 * W);
+              g.fillStyle = GREEN; dot(g, x0 + Math.max(0, Math.min(1, k1)) * (x1 - x0), y - h - S * 0.045, S * 0.014); g.fillStyle = "#fff"; dot(g, x0 + Math.max(0, Math.min(1, k2)) * (x1 - x0), y - h - S * 0.045, S * 0.011);
+            }
+          } }
         // ponds
         PONDS.forEach(function (p) {
           const x = p.x * W - cam.x, y = p.y * W - cam.y, rx = p.rx * W, ry = p.ry * W;
@@ -406,6 +467,9 @@
         TREES.forEach(function (t, i) { const x = t[0] * W, y = t[1] * W; if (vis(x, y, S * 0.3)) items.push({ y: y, f: function () { drawTree(x - cam.x, y - cam.y, 0.9 + hash(i, 7) * 0.5, i); } }); });
         ROCKS.forEach(function (t, i) { const x = t[0] * W, y = t[1] * W; if (vis(x, y, S * 0.2)) items.push({ y: y, f: function () { drawRock(x - cam.x, y - cam.y, 0.8 + hash(i, 3) * 0.6); } }); });
         SHROOMS.forEach(function (t, i) { const x = t[0] * W, y = t[1] * W; if (vis(x, y, S * 0.2)) items.push({ y: y, f: function () { drawShroom(x - cam.x, y - cam.y, 0.9 + hash(i, 5) * 0.5); } }); });
+        { const fx0 = RACE.x0 * W, fy = RACE.y * W - S * 0.1, fx1 = RACE.x1 * W + S * 0.015;
+          if (vis(fx0, fy, S * 0.3)) items.push({ y: fy + S * 0.1, f: function () { drawFlag(fx0 - cam.x, fy - cam.y, true); } });
+          if (vis(fx1, fy, S * 0.3)) items.push({ y: fy + S * 0.1, f: function () { drawFlag(fx1 - cam.x, fy - cam.y, false); } }); }
         HOUSES.forEach(function (h) { const x = h.x * W, y = h.y * W; if (vis(x, y, S * 0.3)) items.push({ y: y + S * 0.1, f: function () { drawHouse(h, x - cam.x, y - cam.y); } }); });
         animals.forEach(function (a) { if (vis(a.x, a.y, S * 0.3)) items.push({ y: a.y + (a.kind === "owl" ? -S * 0.2 : 0), f: function () { if (a.kind !== "duck" && a.kind !== "owl") drawShadow(a.x - cam.x, a.y - cam.y, S * 0.05, a.z || 0); drawAnimal(Object.assign({}, a, { x: a.x - cam.x, y: a.y - cam.y })); } }); });
         // the owl sits in the tree at (0.68,0.12) → draw above the canopy
@@ -440,6 +504,7 @@
           if (e.kind === "mark") { g.globalAlpha = 1 - k; g.strokeStyle = "#fff"; g.lineWidth = Math.max(1.5, S * 0.004); g.beginPath(); g.arc(x, y, S * 0.02 + k * S * 0.03, 0, TAU); g.stroke(); }
           else if (e.kind === "spark") { g.globalAlpha = 1 - k; g.fillStyle = e.col; dot(g, x, y, S * 0.006); }
           else if (e.kind === "conf") { g.globalAlpha = 1 - k; g.fillStyle = e.col; g.translate(x, y); g.rotate(e.rot); g.fillRect(-S * 0.008, -S * 0.005, S * 0.016, S * 0.01); }
+          else if (e.kind === "ring") { g.globalAlpha = 1 - k; g.strokeStyle = e.big ? "#7fe0a0" : "#ffd36b"; g.lineWidth = Math.max(2, S * 0.008); g.beginPath(); g.arc(x, y, S * 0.03 + k * S * (e.big ? 0.25 : 0.12), 0, TAU); g.stroke(); }
           else if (e.kind === "star") { g.globalAlpha = 1 - k; g.translate(x, y - k * S * 0.08); g.scale(1 + k * 0.5, 1 + k * 0.5); PICT.star(g, S * 0.025); }
           g.restore();
         });
@@ -448,6 +513,7 @@
         const m = S * 0.16, x0 = S - m - S * 0.025, y0 = S - m - S * 0.025;
         g.save(); g.globalAlpha = 0.85; rr(g, x0, y0, m, m, S * 0.02); g.fillStyle = "rgba(10,20,18,0.8)"; g.fill(); g.strokeStyle = "rgba(127,224,160,0.5)"; g.lineWidth = 1.5; g.stroke();
         PONDS.forEach(function (p) { g.fillStyle = "#2a6a92"; ell(g, x0 + p.x * m, y0 + p.y * m, p.rx * m, p.ry * m); g.fill(); });
+        g.strokeStyle = "rgba(255,255,255,0.45)"; g.lineWidth = 2; g.beginPath(); g.moveTo(x0 + RACE.x0 * m, y0 + RACE.y * m); g.lineTo(x0 + RACE.x1 * m, y0 + RACE.y * m); g.stroke();
         HOUSES.forEach(function (h) { g.fillStyle = h.col; dot(g, x0 + h.x * m, y0 + h.y * m, m * 0.045); });
         g.fillStyle = GREEN; g.shadowColor = GREEN; g.shadowBlur = 6; dot(g, x0 + frog.x / W * m, y0 + frog.y / W * m, m * 0.04 + Math.sin(now * 0.006) * m * 0.008);
         g.restore();
@@ -490,17 +556,12 @@
         if (fade > 0) { g.fillStyle = "rgba(10,8,20," + fade + ")"; g.fillRect(0, 0, S, S); }
       }
 
-      // ---- input ----
-      function onDown(x, y, button) {
+      // ---- input ---- LEFT = move/talk/enter ONLY. RIGHT = tongue ONLY. (Touch: hold ~0.4 s = tongue.)
+      function leftAction(x, y) {
         if (fadeDir) return;
         const wx = scene === "world" ? x + cam.x : x, wy = scene === "world" ? y + cam.y : y;
-        // a fly under the pointer → tongue (left OR right), so touch works too
-        let nearFly = null; flies.forEach(function (f) { if (Math.hypot(f.x - wx, f.y - wy) < S * 0.06) nearFly = f; });
-        if (button === 2 || nearFly) {
-          if (Math.hypot(wx - frog.x, wy - frog.y) > S * 0.46 && nearFly) { goTo(wx, wy); return; }   // too far: hop closer first
-          shootTongue(wx, wy); return;
-        }
-        // tap the frog itself → ribbit
+        if (race) { raceClick(); return; }
+        // tap the frog itself -> ribbit
         if (Math.hypot(wx - frog.x, wy - frog.y) < frogR() * 1.6) { sndRibbit(); frog.sq = 1; frog.happy = 1200; fx.push({ kind: "star", x: frog.x, y: frog.y - frogR() * 1.6, t: 0, dur: 900 }); return; }
         if (scene === "house") {
           const D = doorRect();
@@ -508,6 +569,8 @@
           if (Math.hypot(wx - roomToad.x, wy - roomToad.y) < S * 0.13) { if (Math.hypot(frog.x - roomToad.x, frog.y - roomToad.y) < S * 0.24) toadTalk(); else goTo(roomToad.x + (frog.x < roomToad.x ? -1 : 1) * S * 0.17, roomToad.y + S * 0.06, { type: "toad" }); return; }
           goTo(x, y); return;
         }
+        // the race start flag
+        { const fx0 = RACE.x0 * W + S * 0.03, fy = RACE.y * W; if (Math.abs(wx - fx0) < S * 0.1 && Math.abs(wy - fy) < S * 0.14) { const sp = raceStartPos(); goTo(sp.x, sp.y, { type: "race" }); return; } }
         // animals
         let a = null; animals.forEach(function (q) { if (Math.hypot(q.x - wx, q.y - wy) < S * 0.09) a = q; });
         if (a) { if (Math.hypot(frog.x - a.x, frog.y - a.y) < S * 0.2) talk(a); else goTo(a.x + (frog.x < a.x ? -1 : 1) * S * 0.14, a.y + S * 0.03, { type: "animal", a: a }); return; }
@@ -515,11 +578,17 @@
         for (let i = 0; i < HOUSES.length; i++) { const h = HOUSES[i], hx = h.x * W, hy = h.y * W; if (Math.abs(wx - hx) < S * 0.16 && wy > hy - S * 0.16 && wy < hy + S * 0.14) { const d = houseDoor(h); goTo(d.x, d.y + S * 0.03, { type: "house", i: i }); return; } }
         goTo(wx, wy);
       }
+      function rightAction(x, y) {
+        if (fadeDir) return;
+        const wx = scene === "world" ? x + cam.x : x, wy = scene === "world" ? y + cam.y : y;
+        shootTongue(wx, wy);      // always the tongue, never a move - even if the fly is out of reach
+      }
 
       return {
         mount(stage, c) {
           stageEl = stage; ctx = c;
           reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          touchDevice = (navigator.maxTouchPoints || 0) > 0 && !window.matchMedia("(pointer: fine)").matches;
           const wrap = document.createElement("div");
           wrap.style.display = "flex"; wrap.style.flexDirection = "column"; wrap.style.alignItems = "center";
           canvas = document.createElement("canvas");
@@ -528,24 +597,31 @@
           g = canvas.getContext("2d");
           wrap.appendChild(canvas);
           const hint = document.createElement("div"); hint.className = "hint";
-          hint.textContent = "Click: hop there. Right-click (or tap a fly): tongue! Click animals to say hi, click a house to go in.";
+          hint.textContent = touchDevice ? "Tap: hop there. Hold: tongue! Tap animals to say hi, tap a house to go in, tap the flag to race the bunny." : "Left-click: hop there. Right-click: tongue! Click animals to say hi, a house to go in, the flag to race the bunny.";
           wrap.appendChild(hint);
           stage.appendChild(wrap);
           ctxMenu = function (e) { e.preventDefault(); }; canvas.addEventListener("contextmenu", ctxMenu);
           try { duckClip = new Audio("audio/animals/duck.mp3"); duckClip.preload = "auto"; } catch (e) { duckClip = null; }
-          if (window.Arcade && Arcade.voice && Arcade.voice.preload) Arcade.voice.preload(ANIMALS.map(function (a) { return a.line; }).concat(HOUSE_LINES, ["Yummy!", "Bye bye!"]));
+          if (window.Arcade && Arcade.voice && Arcade.voice.preload) Arcade.voice.preload(ANIMALS.map(function (a) { return a.line; }).concat(HOUSE_LINES, ["Yummy!", "Bye bye!", "Great job!", "Try again!"]));
           now = 0; eaten = 0; S = 0;
           resize(); reset();
           ctx.setScore(0);
           Arcade.input.setPointerTarget(canvas);
           unResize = Arcade.board.onResize(function () { resize(); });
-          Arcade._frog = { get: function () { return { frog: frog, flies: flies, animals: animals, scene: scene, cam: cam, S: S, W: W, eaten: eaten, houses: HOUSES.map(function (h) { return { x: h.x * W, y: h.y * W }; }) }; } };
+          Arcade._frog = { get: function () { return { frog: frog, flies: flies, animals: animals, scene: scene, cam: cam, S: S, W: W, eaten: eaten, race: race, race0: { x: RACE.x0 * W, x1: RACE.x1 * W, y: RACE.y * W }, houses: HOUSES.map(function (h) { return { x: h.x * W, y: h.y * W }; }) }; } };
           draw();
         },
         handleInput(intent) {
-          if (intent.type !== "point" || intent.phase !== "down") return;
-          if (intent.button !== 0 && intent.button !== 2) return;
-          onDown(intent.x, intent.y, intent.button);
+          if (intent.type !== "point") return;
+          if (intent.phase === "down" && intent.button === 2) { press = null; rightAction(intent.x, intent.y); return; }
+          if (intent.button !== 0) return;
+          if (intent.phase === "down") {
+            if (!touchDevice) { leftAction(intent.x, intent.y); return; }
+            const wx = scene === "world" ? intent.x + cam.x : intent.x, wy = scene === "world" ? intent.y + cam.y : intent.y;
+            press = { x: intent.x, y: intent.y, wx: wx, wy: wy, t: now, done: false };   // touch: decide on release (tap) or after a hold (tongue)
+          } else if (intent.phase === "up" && press) {
+            const p = press; press = null; if (!p.done) leftAction(p.x, p.y);
+          }
         },
         tick(dt) { update(Math.min(50, dt)); draw(); },
         getScore() { return eaten; },
