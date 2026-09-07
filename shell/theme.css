@@ -650,3 +650,5 @@ body.kid .hub-search, body.kid .hub-title { display: none; }
 /* ---- low-FX mode (shell/perf.js): no glows anywhere, for machines without GPU acceleration ---- */
 html.lowfx *, html.lowfx *::before, html.lowfx *::after { box-shadow: none !important; text-shadow: none !important; backdrop-filter: none !important; filter: none !important; }
 html.lowfx .icon-btn.on { border-color: #ffb86b; }
+/* low-FX: hub cards lose their blurred glows too (software compositing is slow) */
+html.lowfx .kid-card, html.lowfx .card { transition: none !important; }

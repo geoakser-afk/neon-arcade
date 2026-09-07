@@ -13,6 +13,8 @@
      boards aren't tiny. `max` = game's ceiling; `wideBias` = desktop width use. */
   function stageSize(max, wideBias) {
     max = max || 940;
+    // low-FX (software rendering): draw far fewer pixels — a 600px board is ~2.2× fewer than 880px
+    if (window.Arcade && window.Arcade.perf && window.Arcade.perf.isLow()) max = Math.min(max, 600);
     const w = window.innerWidth, h = window.innerHeight;
     const portrait = w < 720;                 // phone / narrow window
     if (portrait) {

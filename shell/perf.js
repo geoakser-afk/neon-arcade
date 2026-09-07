@@ -33,6 +33,7 @@
     low = !!v;
     try { if (low) localStorage.setItem(KEY, "1"); else localStorage.removeItem(KEY); } catch (e) {}
     if (low) apply(); else unapply();
+    try { window.dispatchEvent(new Event("resize")); } catch (e) {}   // games re-layout at the new stageSize cap
     if (why) console.info("[arcade] low-FX " + (low ? "ON" : "OFF") + " (" + why + ")");
     document.dispatchEvent(new CustomEvent("arcade:lowfx", { detail: { low: low, auto: auto } }));
   }
