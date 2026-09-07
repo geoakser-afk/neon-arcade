@@ -182,11 +182,11 @@
   };
   const ENEMY_DEF = {
     // speed = canvases per ms (multiplied by S at use). aggro = chase radius (× S); leash = give-up radius (× S)
-    snake: { hp: 8, dmg: 1, speed: 0.00026, aggro: 0.6, leash: 1.1, gems: 12, tokens: 8, size: 1, r: 0.06 },
-    gator: { hp: 14, dmg: 2, speed: 0.0004, aggro: 0.5, leash: 0.9, gems: 20, tokens: 12, size: 1.3, r: 0.09, water: true },
-    spider: { hp: 10, dmg: 1, speed: 0.00018, aggro: 0.65, leash: 1.1, gems: 18, tokens: 12, size: 1, r: 0.06, shoots: true },
-    scorpion: { hp: 16, dmg: 2, speed: 0.0002, aggro: 0.6, leash: 1.1, gems: 26, tokens: 16, size: 1.1, r: 0.07, charges: true },
-    guard: { hp: 30, dmg: 2, speed: 0.00032, aggro: 0.7, leash: 1.2, gems: 34, tokens: 18, size: 1.1, r: 0.07 },
+    snake: { hp: 8, dmg: 1, speed: 0.00019, aggro: 0.38, leash: 0.8, gems: 12, tokens: 8, size: 1, r: 0.06 },
+    gator: { hp: 14, dmg: 2, speed: 0.00034, aggro: 0.4, leash: 0.8, gems: 20, tokens: 12, size: 1.3, r: 0.09, water: true },
+    spider: { hp: 10, dmg: 1, speed: 0.00015, aggro: 0.45, leash: 0.85, gems: 18, tokens: 12, size: 1, r: 0.06, shoots: true },
+    scorpion: { hp: 16, dmg: 2, speed: 0.00017, aggro: 0.42, leash: 0.85, gems: 26, tokens: 16, size: 1.1, r: 0.07, charges: true },
+    guard: { hp: 30, dmg: 2, speed: 0.00022, aggro: 0.45, leash: 1.2, gems: 34, tokens: 18, size: 1.1, r: 0.07 },
     king: { hp: 260, dmg: 3, speed: 0.00032, aggro: 9, leash: 9, gems: 300, tokens: 0, size: 2.4, r: 0.16 }
   };
   // shop items. tier = first biome (index) where the item is sold. kind: weapon | armor | potion
@@ -199,13 +199,13 @@
     { id: "slingshot", kind: "weapon", tier: 2, cost: 190, name: "Slingshot Tongue", desc: "double reach, pierces everything" },
     { id: "fire", kind: "weapon", tier: 3, cost: 280, name: "Fire Tongue", desc: "+3 damage, sets enemies ablaze" },
     { id: "royal", kind: "weapon", tier: 4, cost: 420, name: "Royal Tongue", desc: "double damage. Fit for a king." },
-    { id: "toadskin", kind: "armor", tier: 0, cost: 50, name: "Toad Skin", desc: "take 1 less damage" },
+    { id: "toadskin", kind: "armor", tier: 0, cost: 50, name: "Toad Skin", desc: "20% of hits bounce off" },
     { id: "heart", kind: "armor", tier: 0, cost: 60, name: "Extra Heart", desc: "+1 max heart (up to 4 times)", repeat: 4 },
     { id: "boots", kind: "armor", tier: 1, cost: 70, name: "Swamp Boots", desc: "swim 60% faster" },
     { id: "spring", kind: "armor", tier: 1, cost: 95, name: "Spring Legs", desc: "hop 30% farther" },
     { id: "lily", kind: "armor", tier: 1, cost: 130, name: "Lily Shield", desc: "blocks one hit every 8 s" },
-    { id: "stone", kind: "armor", tier: 3, cost: 240, name: "Stone Hide", desc: "take 2 less damage" },
-    { id: "crownguard", kind: "armor", tier: 4, cost: 360, name: "Crown Guard", desc: "take 3 less damage" },
+    { id: "stone", kind: "armor", tier: 3, cost: 240, name: "Stone Hide", desc: "+20% block, heavy hits do 1 less" },
+    { id: "crownguard", kind: "armor", tier: 4, cost: 360, name: "Crown Guard", desc: "+25% block (max 70%)" },
     { id: "heal", kind: "potion", tier: 0, cost: 25, name: "Heal Potion", desc: "+3 hearts (use from the bar)", stack: true },
     { id: "stam", kind: "potion", tier: 0, cost: 15, name: "Zip Potion", desc: "10 s of endless stamina", stack: true },
     { id: "bait", kind: "potion", tier: 0, cost: 30, name: "Bug Bait", desc: "spawns 8 bugs around you", stack: true },
@@ -325,7 +325,7 @@
       function tongueRange() { return S * 0.4 * (has("long") ? 1.4 : 1) * (has("slingshot") ? 2 : 1); }
       function tongueDmg() { return (2 + (has("venom") ? 2 : 0) + (has("fire") ? 3 : 0)) * (has("royal") ? 2 : 1); }
       function tongueCd() { return 380 * (has("quick") ? 0.65 : 1); }
-      function armor() { return (has("toadskin") ? 1 : 0) + (has("stone") ? 2 : 0) + (has("crownguard") ? 3 : 0); }
+      function blockChance() { return Math.min(0.7, (has("toadskin") ? 0.2 : 0) + (has("stone") ? 0.2 : 0) + (has("crownguard") ? 0.25 : 0)); }
       function hopLen() { return S * 0.13 * (has("spring") ? 1.3 : 1); }
       function gemMul() { return has("charm") ? 1.5 : 1; }
 
@@ -401,8 +401,8 @@
       let jumpFlash = 0;
       function strike(x, y) {
         if (p.dead || p.tongue || p.tcd > 0) return;
-        if (p.stam < 8 && !p.zip) { A().tone(300, 0.08, { type: "sine", vol: 0.04, glide: 200 }); fx.push({ kind: "txt", x: p.x, y: p.y - frogR() * 2, t: 0, dur: 700, text: "tired…", col: "#74b9ff" }); return; }
-        if (!p.zip) { p.stam -= 8; p.stamDelay = 600; }
+        if (p.stam < 10 && !p.zip) { A().tone(300, 0.08, { type: "sine", vol: 0.04, glide: 200 }); fx.push({ kind: "txt", x: p.x, y: p.y - frogR() * 2, t: 0, dur: 700, text: "tired…", col: "#74b9ff" }); return; }
+        if (!p.zip) { p.stam -= 10; p.stamDelay = 700; }
         const oy = p.y - frogR() * 0.05, dx = x - p.x, dy = y - oy, d = Math.hypot(dx, dy) || 1, max = tongueRange();
         let tx = dx / d * Math.min(d, max), ty = dy / d * Math.min(d, max);
         const L = Math.hypot(tx, ty), ux = tx / L, uy = ty / L;
@@ -458,8 +458,8 @@
         if (p.dead || p.iframes > 0 || scene !== "world") return;
         if (inSafeZone(p.x, p.y)) { fx.push({ kind: "txt", x: p.x, y: p.y - frogR() * 2, t: 0, dur: 600, text: "safe", col: "#7fe0a0" }); p.iframes = 300; return; }
         if (has("lily") && p.shieldCd <= 0) { p.shieldCd = 8000; p.iframes = 700; fx.push({ kind: "txt", x: p.x, y: p.y - frogR() * 2, t: 0, dur: 800, text: "blocked!", col: "#74b9ff" }); A().tone(880, 0.12, { type: "sine", vol: 0.08, glide: 1320 }); return; }
-        dmg = Math.max(dmg >= 3 ? 1 : 0, dmg - armor());
-        if (dmg <= 0) { fx.push({ kind: "txt", x: p.x, y: p.y - frogR() * 2, t: 0, dur: 600, text: "0", col: "#b8b2cc" }); p.iframes = 400; return; }
+        if (Math.random() < blockChance()) { fx.push({ kind: "txt", x: p.x, y: p.y - frogR() * 2, t: 0, dur: 700, text: "armor!", col: "#8a85a8" }); p.iframes = 500; A().tone(700, 0.08, { type: "triangle", vol: 0.06, glide: 500 }); return; }
+        if (dmg >= 3 && has("stone")) dmg -= 1;
         p.hp -= dmg; p.iframes = 900; p.hurt = 300; shake = Math.max(shake, 8); sndHurt();
         const a = Math.atan2(p.y - fromY, p.x - fromX); p.hop = null; p.x = clamp(p.x + Math.cos(a) * S * 0.08, S * 0.05, W - S * 0.05); p.y = clamp(p.y + Math.sin(a) * S * 0.08, S * 0.08, H - S * 0.05);   // knocked back, but you keep your destination
         fx.push({ kind: "txt", x: p.x, y: p.y - frogR() * 2, t: 0, dur: 700, text: "-" + dmg, col: "#ff6b6b" });
@@ -623,7 +623,7 @@
           else { e.x = e.hx + Math.sin(e.t * 0.0005 + e.slot) * S * 0.2; e.face = Math.cos(e.t * 0.0005 + e.slot) < 0 ? -1 : 1; }
         } else {
           // chasers: snakes, guards, spiderlings, mini-bosses between attacks
-          if (e.state === "chase" || e.isMini) { const mv = sp * (e.isMini ? 0.75 : 1); if (d > R * 0.8 + frogR() * 0.5) { e.x += (p.x - e.x) / d * mv * dt; e.y += (p.y - e.y) / d * mv * dt; } e.face = p.x < e.x ? -1 : 1; if (e.kind === "guard") e.z = Math.abs(Math.sin(e.t * 0.012)) * 0.5; if (d < R + frogR() * 1.2 && e.cd <= 0 && !(e.isMini && inSafeZone(p.x, p.y))) e.atk = { t: 0 }; }
+          if (e.state === "chase" || e.isMini) { const mv = sp * (e.isMini ? 0.22 : 1); if (e.isMini ? (e.gimmick !== "slam" && d > S * 0.55) : d > R * 0.8 + frogR() * 0.5) { e.x += (p.x - e.x) / d * mv * dt; e.y += (p.y - e.y) / d * mv * dt; } e.face = p.x < e.x ? -1 : 1; if (e.kind === "guard") e.z = Math.abs(Math.sin(e.t * 0.012)) * 0.5; if (d < R + frogR() * 1.2 && e.cd <= 0 && !(e.isMini && inSafeZone(p.x, p.y))) e.atk = { t: 0 }; }
           else if (e.state === "return") { const hd = Math.hypot(e.hx - e.x, e.hy - e.y); if (hd < 4) e.state = "idle"; else { e.x += (e.hx - e.x) / hd * sp * dt; e.y += (e.hy - e.y) / hd * sp * dt; e.face = e.hx < e.x ? -1 : 1; } e.z = 0; }
           else { e.x = e.hx + Math.sin(e.t * 0.0006 + e.slot) * S * 0.25; e.face = Math.cos(e.t * 0.0006 + e.slot) < 0 ? -1 : 1; e.z = 0; }
         }
@@ -723,7 +723,7 @@
             if (f.superHop > 0) { f.superHop -= dt; f.z *= 2.6; }
             if (k >= 1) { f.hop = null; f.z = 0; f.rest = 60; f.sq = 0.6; f.superHop = 0; const wp = pondAt(f.x, f.y); if (wp) { f.swim = 1; ripples.push({ x: f.x, y: f.y, t: 0, dur: 900, r: R * 3 }); A().tone(520, 0.1, { type: "sine", vol: 0.05, glide: 160 }); } else A().tone(140, 0.05, { type: "sine", vol: 0.05, glide: 90 }); }
           } else if (pond && dist > R * 0.4) {
-            if (!f.zip) { f.stam = Math.max(0, f.stam - dt * 0.003); f.stamDelay = 300; }
+            if (!f.zip) { f.stam = Math.max(0, f.stam - dt * 0.001); f.stamDelay = 200; }
             const sp = S * 0.00032 * (has("boots") ? 1.6 : 1) * slowK * (f.stam <= 0 && !f.zip ? 0.55 : 1), step = Math.min(dist, sp * dt);
             f.x += dx / dist * step; f.y += dy / dist * step; f.face = Math.abs(dx) > S * 0.005 ? (dx < 0 ? -1 : 1) : f.face;
             f.kick += dt; if (f.kick > 420) { f.kick = 0; ripples.push({ x: f.x, y: f.y + R * 0.3, t: 0, dur: 800, r: R * 2.2 }); }
@@ -734,7 +734,7 @@
               const len = Math.min(dist, hopLen() * slowK * (f.stam <= 0 && !f.zip ? 0.45 : 1));
               f.hop = { x0: f.x, y0: f.y, x1: f.x + dx / dist * len, y1: f.y + dy / dist * len, t: 0, dur: 280 + len / S * 500 };
               if (Math.abs(dx) > S * 0.01) f.face = dx < 0 ? -1 : 1;
-              if (!f.zip) { f.stam = Math.max(0, f.stam - 6); f.stamDelay = 600; }
+              if (!f.zip) { f.stam = Math.max(0, f.stam - 1.5); f.stamDelay = 250; }
               sndHop();
             }
           } else { f.swim = pond ? 1 : 0; if (f.goal && f.goal.type === "house") { const gl = f.goal; f.goal = null; enterHouse(gl.i); } else if (f.goal && f.goal.type === "npc") { const gl = f.goal; f.goal = null; talkTo(gl.npc, gl.x, gl.y); } else if (f.goal && f.goal.type === "chest") { const gl = f.goal; f.goal = null; openChest(gl.i, gl.k, gl.x, gl.y); } else if (f.goal && f.goal.type === "poi") { const gl = f.goal; f.goal = null; visitPoi(gl.i, gl.k, gl.pp); } else if (f.goal && f.goal.type === "smith") { const gl = f.goal; f.goal = null; panel = { kind: gl.kind }; sndClick(); } }
@@ -1048,7 +1048,7 @@
         // hearts
         for (let i = 0; i < save.hpMax; i++) { g.save(); g.translate(S * 0.045 + i * S * 0.042, S * 0.045); g.fillStyle = i < p.hp ? "#ff6b8a" : "rgba(255,255,255,0.15)"; if (i < p.hp) { g.shadowColor = "#ff6b8a"; g.shadowBlur = S * 0.012; } SHAPE.heart(g, S * 0.016); g.restore(); }
         // stamina
-        g.fillStyle = "rgba(255,255,255,0.12)"; rr(g, S * 0.03, S * 0.075, S * 0.22, S * 0.014, S * 0.007); g.fill(); g.fillStyle = p.zip > 0 ? "#ffd36b" : p.stam < 12 ? (Math.floor(now / 200) % 2 ? "#ff6b6b" : "#ff8fa3") : "#74b9ff"; rr(g, S * 0.03, S * 0.075, S * 0.22 * p.stam / 100, S * 0.014, S * 0.007); g.fill(); if (p.stam < 12 && p.zip <= 0) { g.fillStyle = "rgba(255,107,107,0.9)"; g.font = "700 " + Math.round(S * 0.016) + "px system-ui, sans-serif"; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText("tired", S * 0.26, S * 0.082); }
+        g.fillStyle = "rgba(255,255,255,0.12)"; rr(g, S * 0.03, S * 0.075, S * 0.22, S * 0.014, S * 0.007); g.fill(); g.fillStyle = p.zip > 0 ? "#ffd36b" : p.stam < 10 ? (Math.floor(now / 200) % 2 ? "#ff6b6b" : "#ff8fa3") : "#74b9ff"; rr(g, S * 0.03, S * 0.075, S * 0.22 * p.stam / 100, S * 0.014, S * 0.007); g.fill(); if (p.stam < 10 && p.zip <= 0) { g.fillStyle = "rgba(255,107,107,0.9)"; g.font = "700 " + Math.round(S * 0.016) + "px system-ui, sans-serif"; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText("tired", S * 0.26, S * 0.082); }
         // biome + token progress (center)
         g.save(); g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "rgba(230,236,245,0.85)"; g.font = "700 " + Math.round(S * 0.024) + "px system-ui, sans-serif"; g.fillText(inArena(p.x) ? "The Castle" : b.name, S / 2, S * 0.035);
         g.translate(S / 2 - S * 0.035, S * 0.075); g.fillStyle = b.tokenCol; g.shadowColor = b.tokenCol; g.shadowBlur = S * 0.015; SHAPE[b.token](g, S * 0.016); g.shadowBlur = 0; g.fillStyle = "#e6ecf5"; g.font = "800 " + Math.round(S * 0.026) + "px system-ui, sans-serif"; g.textAlign = "left"; g.fillText(save.tokens[bi] + " / " + b.need, S * 0.03, 0); g.restore();
