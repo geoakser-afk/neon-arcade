@@ -546,12 +546,13 @@
         g.restore();
       }
       function drawGround() {
+        const lowFx = window.Arcade && Arcade.perf && Arcade.perf.isLow();
         // grass with deterministic tufts + flowers, only inside the camera view
         g.fillStyle = "#15302a"; g.fillRect(0, 0, S, S);
         const cell = S * 0.075, i0 = Math.floor(cam.x / cell), j0 = Math.floor(cam.y / cell), n = Math.ceil(S / cell) + 2;
         for (let i = i0; i < i0 + n; i++) for (let j = j0; j < j0 + n; j++) {
           const h1 = hash(i, j), h2 = hash(j, i), x = i * cell + h1 * cell - cam.x, y = j * cell + h2 * cell - cam.y;
-          if (h1 < 0.5) { g.fillStyle = "rgba(127,224,160," + (0.05 + h2 * 0.08) + ")"; ell(g, x, y, cell * 0.45, cell * 0.28); g.fill(); }
+          if (h1 < 0.5 && !lowFx) { g.fillStyle = "rgba(127,224,160," + (0.05 + h2 * 0.08) + ")"; ell(g, x, y, cell * 0.45, cell * 0.28); g.fill(); }
           if (h2 > 0.82) { g.strokeStyle = "rgba(127,224,160,0.35)"; g.lineWidth = Math.max(1, S * 0.003); g.lineCap = "round"; g.beginPath(); for (let t = -1; t <= 1; t++) { g.moveTo(x + t * cell * 0.07, y); g.lineTo(x + t * cell * 0.14 + Math.sin(now * 0.002 + i) * cell * 0.03, y - cell * 0.22); } g.stroke(); }
           if (h1 > 0.9) drawFlower(x, y, ["#ff8fd0", "#c9c3ff", "#74b9ff", "#ffb86b"][Math.floor(h2 * 4)], 0.8 + h2 * 0.6);
         }

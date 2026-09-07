@@ -275,7 +275,7 @@
     controls: "click",
     scoreLabel: "Gems",
     create() {
-      let stageEl, ctx, canvas, g, unResize = null, ctxMenu = null;
+      let stageEl, ctx, canvas, g, unResize = null, ctxMenu = null, keyFn = null;
       let S = 0, W = 0, H = 0, dpr = 1, reduced = false, now = 0;
       let save, p, cam, prey = [], enemies = [], hazards = [], fx = [], ripples = [], toasts = [], boss = null, mini = null;
       let jumpPrompt = null, house = -1, houseT = 0, talking = null, hostLine = 0;
@@ -913,6 +913,7 @@
       }
 
       function drawGround() {
+        const lowFx = window.Arcade && Arcade.perf && Arcade.perf.isLow();
         const x0 = cam.x, x1 = cam.x + S;
         for (let i = 0; i < 5; i++) {
           const bx0 = i * bw(), bx1 = (i + 1) * bw(); if (bx1 < x0 || bx0 > x1) continue;
@@ -925,7 +926,7 @@
           const h1 = hash(i, j), h2 = hash(j, i), wx = i * cell + h1 * cell, x = wx - cam.x, y = j * cell + h2 * cell - cam.y;
           if (inArena(wx)) continue;
           const b = BIOMES[biomeOf(wx)];
-          if (h1 < 0.5) { g.fillStyle = "rgba(" + b.tuft + "," + (0.05 + h2 * 0.08) + ")"; ell(g, x, y, cell * 0.45, cell * 0.28); g.fill(); }
+          if (h1 < 0.5 && !lowFx) { g.fillStyle = "rgba(" + b.tuft + "," + (0.05 + h2 * 0.08) + ")"; ell(g, x, y, cell * 0.45, cell * 0.28); g.fill(); }
           if (h2 > 0.82) { g.strokeStyle = "rgba(" + b.tuft + ",0.35)"; g.lineWidth = Math.max(1, S * 0.003); g.lineCap = "round"; g.beginPath(); for (let t = -1; t <= 1; t++) { g.moveTo(x + t * cell * 0.07, y); g.lineTo(x + t * cell * 0.14 + Math.sin(now * 0.002 + i) * cell * 0.03, y - cell * 0.22); } g.stroke(); }
         }
         // ponds
@@ -1056,7 +1057,7 @@
         // gems (right)
         g.save(); g.translate(S * 0.9, S * 0.045); g.fillStyle = "#74b9ff"; g.shadowColor = "#74b9ff"; g.shadowBlur = S * 0.015; SHAPE.gem(g, S * 0.018); g.shadowBlur = 0; g.fillStyle = "#e6ecf5"; g.font = "800 " + Math.round(S * 0.03) + "px system-ui, sans-serif"; g.textAlign = "right"; g.textBaseline = "middle"; g.fillText(String(save.gems), -S * 0.03, 0); g.restore();
         // potions (bottom-left)
-        potionSlots().forEach(function (s) { g.save(); rr(g, s.x, s.y, s.w, s.h, S * 0.012); g.fillStyle = "rgba(10,8,20,0.7)"; g.fill(); g.strokeStyle = s.n ? s.col : "rgba(255,255,255,0.15)"; g.lineWidth = 2; g.stroke(); g.globalAlpha = s.n ? 1 : 0.3; g.fillStyle = s.col; g.translate(s.x + s.w / 2, s.y + s.h / 2 - S * 0.006); if (s.id === "heal") SHAPE.heart(g, S * 0.014); else if (s.id === "stam") SHAPE.bolt(g, S * 0.014); else drawPrey(g, "fly", 0, 0, S * 0.012, now, 0); g.globalAlpha = 1; g.fillStyle = "#e6ecf5"; g.font = "800 " + Math.round(S * 0.018) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("×" + s.n, 0, S * 0.022); g.restore(); });
+        potionSlots().forEach(function (s) { g.save(); rr(g, s.x, s.y, s.w, s.h, S * 0.012); g.fillStyle = "rgba(10,8,20,0.7)"; g.fill(); g.strokeStyle = s.n ? s.col : "rgba(255,255,255,0.15)"; g.lineWidth = 2; g.stroke(); g.globalAlpha = s.n ? 1 : 0.3; g.fillStyle = s.col; g.translate(s.x + s.w / 2, s.y + s.h / 2 - S * 0.006); if (s.id === "heal") SHAPE.heart(g, S * 0.014); else if (s.id === "stam") SHAPE.bolt(g, S * 0.014); else drawPrey(g, "fly", 0, 0, S * 0.012, now, 0); g.globalAlpha = 1; g.fillStyle = "#e6ecf5"; g.font = "800 " + Math.round(S * 0.018) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("×" + s.n, 0, S * 0.022); g.globalAlpha = 0.6; g.font = "700 " + Math.round(S * 0.013) + "px system-ui, sans-serif"; g.fillText(String(["heal", "stam", "bait"].indexOf(s.id) + 1), -s.w / 2 + S * 0.01, -s.h / 2 + S * 0.009); g.restore(); });
         // boss / mini-boss bar
         const big = boss || (mini && mini.biome === biomeOf(p.x) ? mini : null); if (big && !big.dead) { g.save(); g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "#ffd36b"; g.font = "800 " + Math.round(S * 0.022) + "px system-ui, sans-serif"; g.fillText(big.name, S / 2, S * 0.115); drawHpBar(S / 2, S * 0.13, S * 0.5, big.hp, big.hpMax, boss ? "#ff6b8a" : "#ffd36b"); g.restore(); }
         // radar minimap: what's around you (world radius RR), you in the middle
@@ -1192,10 +1193,13 @@
           g = canvas.getContext("2d");
           wrap.appendChild(canvas);
           const hint = document.createElement("div"); hint.className = "hint";
-          hint.textContent = "Left-click: hop / talk / open. Right-click: tongue. Campfire = safe. Houses heal you. When JUMP! shows, click.";
+          hint.textContent = "Left-click: hop / talk / open. Right-click: tongue. Keys 1 / 2 / 3 drink potions. Campfire = safe. Houses heal you. When JUMP! shows, click.";
           wrap.appendChild(hint);
           stage.appendChild(wrap);
           ctxMenu = function (e) { e.preventDefault(); }; canvas.addEventListener("contextmenu", ctxMenu);
+          // number keys drink potions: 1 = heal, 2 = zip (bolt), 3 = bait
+          keyFn = function (e) { if (scene !== "world" || cut || panel || !p || p.dead || e.repeat) return; const id = { "1": "heal", "2": "stam", "3": "bait" }[e.key]; if (id) { e.preventDefault(); usePotion(id); } };
+          window.addEventListener("keydown", keyFn);
           now = 0; S = 0; scene = "title"; cut = null; panel = null; shake = 0; fade = 0; fadeDir = 0; toasts = []; fx = [];
           resize(); load();
           cam = { x: 0, y: 0 }; p = null;
@@ -1216,6 +1220,7 @@
           if (dirty && p) persist();
           if (unResize) unResize(); unResize = null;
           if (canvas && ctxMenu) canvas.removeEventListener("contextmenu", ctxMenu); ctxMenu = null;
+          if (keyFn) window.removeEventListener("keydown", keyFn); keyFn = null;
           if (window.Arcade) delete Arcade._quest;
           stageEl = ctx = canvas = g = null; prey = []; enemies = []; hazards = []; fx = []; ripples = []; toasts = []; boss = null; mini = null; p = null;
         }
