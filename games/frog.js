@@ -260,7 +260,7 @@
       function startMini(kind) {
         const m = MINIS.find(function (q) { return q.kind === kind; }), A = miniAnchor(m);
         mini = { kind: kind, A: A, t: 0, phase: "intro", round: 0, wins: 0, items: [], seq: [], input: [], score: 0, done: false };
-        frog.x = frog.tx = A.x; frog.y = frog.ty = A.y + S * 0.3; frog.face = 1; frog.hop = null; frog.goal = null;
+        if (kind !== "bubbles") { frog.x = frog.tx = A.x; frog.y = frog.ty = A.y + S * 0.3; frog.face = 1; frog.hop = null; frog.goal = null; } else { frog.goal = null; }
         const an = animalOf(m.anim); if (an) { an.sq = 1; an.talk = 1500; }
         ctx.audio.arp([523, 659, 784], { dur: 0.12, step: 0.07, vol: 0.1, type: "sine" });
         if (kind === "shell") { mini.pads = [-1, 0, 1].map(function (i) { return { x: A.x + i * S * 0.19, y: A.y, slot: i + 1, tx: A.x + i * S * 0.19 }; }); mini.turtle = 1; setPhase("show", 1400); }
@@ -295,13 +295,13 @@
         } else if (m.kind === "bubbles") {
           const d = animalOf("duck");
           m.spawnT += dt; if (m.spawnT > 750 && m.items.length < 7 && m.phase === "play") { m.spawnT = 0; m.items.push({ x: d.x + (Math.random() - 0.5) * S * 0.1, y: d.y - S * 0.05, vy: -S * (0.00012 + Math.random() * 0.00008), ph: Math.random() * TAU, r: S * (0.045 + Math.random() * 0.025), t: 0 }); }
-          for (let i = m.items.length - 1; i >= 0; i--) { const b = m.items[i]; b.t += dt; b.y += b.vy * dt; b.x += Math.sin(now * 0.003 + b.ph) * S * 0.00006 * dt; if (b.t > 7000 || b.y < m.A.y - S * 0.6) m.items.splice(i, 1); }
+          for (let i = m.items.length - 1; i >= 0; i--) { const b = m.items[i]; b.t += dt; b.y += b.vy * dt; b.x += (Math.sin(now * 0.003 + b.ph) * S * 0.00006 + (frog.x - b.x) * 0.00002) * dt; if (b.t > 9000 || b.y < d.y - S * 0.7) m.items.splice(i, 1); }
           if (m.phase === "win" && m.t > m.dur) endMini(true);
         }
       }
       function miniClick(wx, wy) {
         const m = mini; if (m.done) return true;
-        if (Math.hypot(wx - m.A.x, wy - m.A.y) > S * 0.95) { mini = null; return false; }   // walk away = leave the game
+        if (Math.hypot(wx - m.A.x, wy - m.A.y) > (m.kind === "bubbles" ? S * 2.2 : S * 0.95)) { mini = null; return false; }   // walk away = leave the game
         if (m.kind === "shell") {
           if (m.phase !== "pick") return true;
           let hit = -1; m.pads.forEach(function (pd, i) { if (Math.hypot(wx - pd.x, wy - pd.y) < S * 0.11) hit = i; });
@@ -323,7 +323,7 @@
         if (m.kind === "bubbles") {
           if (m.phase !== "play") return true;
           let best = -1, bd = S * 0.09; m.items.forEach(function (b, i) { const d = Math.hypot(wx - b.x, wy - b.y); if (d < bd + b.r * 0.5) { bd = d; best = i; } });
-          if (best < 0) return true;
+          if (best < 0) return false;                      // not a bubble → a normal hop (he can move and swim while playing)
           const b = m.items.splice(best, 1)[0]; m.score++;
           ctx.audio.tone(PENTA[m.score % PENTA.length], 0.18, { type: "sine", vol: 0.1, glide: PENTA[m.score % PENTA.length] * 1.5 });
           for (let k = 0; k < 8; k++) fx.push({ kind: "spark", x: b.x, y: b.y, vx: (Math.random() - 0.5) * S * 0.0005, vy: (Math.random() - 0.5) * S * 0.0005, t: 0, dur: 450, col: "#bfe9ff" });
@@ -366,7 +366,7 @@
           if (m.phase === "input") { g.fillStyle = "rgba(255,255,255,0.7)"; g.font = "800 " + Math.round(S * 0.04) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("👆", m.A.x + ox, m.A.y + oy - S * 0.28 + Math.sin(now * 0.006) * S * 0.01); }
         } else if (m.kind === "bubbles") {
           m.items.forEach(function (b) { const x = b.x + ox, y = b.y + oy; g.save(); g.strokeStyle = "rgba(191,233,255,0.85)"; g.lineWidth = Math.max(1.5, S * 0.004); g.fillStyle = "rgba(191,233,255,0.12)"; g.beginPath(); g.arc(x, y, b.r, 0, TAU); g.fill(); g.stroke(); g.fillStyle = "rgba(255,255,255,0.8)"; dot(g, x - b.r * 0.35, y - b.r * 0.35, b.r * 0.15); g.restore(); });
-          for (let i = 0; i < m.target; i++) { g.fillStyle = i < m.score ? "#74b9ff" : "rgba(255,255,255,0.18)"; dot(g, m.A.x + ox + (i - (m.target - 1) / 2) * S * 0.03, m.A.y + oy - S * 0.42, S * 0.009); }
+          const dk = animalOf("duck") || m.A; for (let i = 0; i < m.target; i++) { g.fillStyle = i < m.score ? "#74b9ff" : "rgba(255,255,255,0.18)"; dot(g, dk.x + ox + (i - (m.target - 1) / 2) * S * 0.03, dk.y + oy - S * 0.16, S * 0.009); }
         }
       }
 
