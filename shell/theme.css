@@ -646,3 +646,7 @@ body.kid .hub-search, body.kid .hub-title { display: none; }
   .kid-entry-text b { font-size: 22px; }
   body.kid .back-btn { font-size: 18px; padding: 10px 18px; }
 }
+
+/* ---- low-FX mode (shell/perf.js): no glows anywhere, for machines without GPU acceleration ---- */
+html.lowfx *, html.lowfx *::before, html.lowfx *::after { box-shadow: none !important; text-shadow: none !important; backdrop-filter: none !important; filter: none !important; }
+html.lowfx .icon-btn.on { border-color: #ffb86b; }

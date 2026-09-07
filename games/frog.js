@@ -132,7 +132,9 @@
       let S = 0, W = 0, dpr = 1, reduced = false, now = 0;
       let frog, cam, flies = [], animals = [], fx = [], ripples = [], bubble = null, eaten = 0;
       let scene = "world", house = -1, fade = 0, fadeDir = 0, pendingScene = null;
-      let hopSnd = 0, duckClip = null, race = null, press = null, touchDevice = false;
+      let hopSnd = 0, duckClip = null, race = null, press = null, touchDevice = false, mini = null;
+      const MINIS = [{ kind: "shell", anim: "turtle" }, { kind: "flowers", anim: "bee" }, { kind: "bubbles", anim: "duck" }];
+      const PENTA = [523, 587, 659, 784, 880, 1046, 1175, 1318];
 
       function resize() {
         const oldS = S;
@@ -148,7 +150,7 @@
         cam = { x: frog.x - S / 2, y: frog.y - S / 2 };
         flies = []; for (let i = 0; i < 16; i++) spawnFly(i < 6 ? frog : null);
         animals = ANIMALS.map(function (a) { return Object.assign({}, a, { x: a.x * W, y: a.y * W, hx: a.x * W, hy: a.y * W, ph: Math.random() * TAU, t: 0, sq: 0, talk: 0, lastTalk: -9999 }); });
-        fx = []; ripples = []; bubble = null; scene = "world"; house = -1; fade = 0; fadeDir = 0; pendingScene = null; race = null; press = null;
+        fx = []; ripples = []; bubble = null; scene = "world"; house = -1; fade = 0; fadeDir = 0; pendingScene = null; race = null; press = null; mini = null;
       }
       function spawnFly(near) {
         let x, y;
@@ -247,6 +249,127 @@
       let worldFlies = null, roomToad = null;
       function frogR() { return S * 0.055; }
 
+      // ---- animal mini-games (no losing, ever) ----
+      function animalOf(kind) { return animals.find(function (a) { return a.kind === kind; }); }
+      function miniAnchor(m) {
+        const a = animalOf(m.anim); if (!a) return { x: W / 2, y: W / 2 };
+        if (m.kind === "bubbles") { const q = PONDS[1]; return { x: q.x * W - q.rx * W - S * 0.16, y: q.y * W }; }   // left bank of the duck pond
+        return { x: (a.hx || a.x) + S * 0.28, y: (a.hy || a.y) - S * 0.02 };
+      }
+      function miniSign(m) { const A = miniAnchor(m); return { x: A.x, y: A.y + S * 0.22 }; }
+      function startMini(kind) {
+        const m = MINIS.find(function (q) { return q.kind === kind; }), A = miniAnchor(m);
+        mini = { kind: kind, A: A, t: 0, phase: "intro", round: 0, wins: 0, items: [], seq: [], input: [], score: 0, done: false };
+        frog.x = frog.tx = A.x; frog.y = frog.ty = A.y + S * 0.3; frog.face = 1; frog.hop = null; frog.goal = null;
+        const an = animalOf(m.anim); if (an) { an.sq = 1; an.talk = 1500; }
+        ctx.audio.arp([523, 659, 784], { dur: 0.12, step: 0.07, vol: 0.1, type: "sine" });
+        if (kind === "shell") { mini.pads = [-1, 0, 1].map(function (i) { return { x: A.x + i * S * 0.19, y: A.y, slot: i + 1, tx: A.x + i * S * 0.19 }; }); mini.turtle = 1; setPhase("show", 1400); }
+        else if (kind === "flowers") { mini.items = [0, 1, 2, 3].map(function (i) { return { x: A.x + (i - 1.5) * S * 0.16, y: A.y, col: ["#ff8fd0", "#ffd36b", "#74b9ff", "#c9c3ff"][i], glow: 0, note: PENTA[i * 2] }; }); mini.bee = { x: A.x - S * 0.3, y: A.y - S * 0.12 }; newFlowerRound(); }
+        else if (kind === "bubbles") { mini.items = []; mini.spawnT = 0; mini.target = 12; setPhase("play", 0); }
+      }
+      function setPhase(ph, dur) { mini.phase = ph; mini.t = 0; mini.dur = dur || 0; }
+      function endMini(big) {
+        if (!mini) return;
+        const A = mini.A;
+        if (big) { confetti(A.x, A.y); ctx.audio.arp([523, 659, 784, 1046, 1318], { dur: 0.2, step: 0.08, vol: 0.12, type: "sine" }); setTimeout(function () { if (ctx) say("Great job!"); }, 400); frog.happy = 3000; }
+        mini.done = true; setPhase("done", 2600);
+      }
+      function newFlowerRound() {
+        const m = mini, len = 2 + Math.min(2, m.round); m.seq = []; for (let i = 0; i < len; i++) m.seq.push(Math.floor(Math.random() * 4)); m.input = []; m.showI = 0; setPhase("show", 700);
+      }
+      function updateMini(dt) {
+        const m = mini; m.t += dt;
+        if (m.done) { if (m.t > m.dur) mini = null; return; }
+        if (m.kind === "shell") {
+          m.pads.forEach(function (pd) { pd.x += (pd.tx - pd.x) * Math.min(1, dt / 120); });
+          if (m.phase === "show" && m.t > m.dur) { setPhase("shuffle", 0); m.swaps = 3 + m.wins * 2; m.swapT = 0; }
+          else if (m.phase === "shuffle") { m.swapT += dt; if (m.swapT > 520) { m.swapT = 0; if (m.swaps-- <= 0) { setPhase("pick", 0); } else { const a = Math.floor(Math.random() * 3); let b = Math.floor(Math.random() * 3); if (b === a) b = (a + 1) % 3; const pa = m.pads[a], pb = m.pads[b], tx = pa.tx; pa.tx = pb.tx; pb.tx = tx; ctx.audio.tone(420 + Math.random() * 200, 0.08, { type: "sine", vol: 0.05, glide: 600 }); } } }
+          else if (m.phase === "reveal" && m.t > m.dur) { if (m.wins >= 3) endMini(true); else { setPhase("show", 1300); } }
+        } else if (m.kind === "flowers") {
+          m.items.forEach(function (f) { if (f.glow > 0) f.glow -= dt; });
+          if (m.phase === "show") { const target = m.items[m.seq[m.showI]]; const bx = target.x, by = target.y - S * 0.1; m.bee.x += (bx - m.bee.x) * Math.min(1, dt / 160); m.bee.y += (by - m.bee.y) * Math.min(1, dt / 160);
+            if (m.t > m.dur) { target.glow = 450; ctx.audio.tone(target.note, 0.25, { type: "sine", vol: 0.1 }); m.showI++; m.t = 0; m.dur = 650; if (m.showI >= m.seq.length) { setPhase("input", 0); m.bee.tx = m.A.x - S * 0.3; } } }
+          else { const tx = m.A.x - S * 0.3, ty = m.A.y - S * 0.12 + Math.sin(now * 0.004) * S * 0.02; m.bee.x += (tx - m.bee.x) * Math.min(1, dt / 300); m.bee.y += (ty - m.bee.y) * Math.min(1, dt / 300);
+            if (m.phase === "win" && m.t > m.dur) { if (m.wins >= 3) endMini(true); else newFlowerRound(); }
+            if (m.phase === "retry" && m.t > m.dur) { m.input = []; m.showI = 0; setPhase("show", 500); } }
+        } else if (m.kind === "bubbles") {
+          const d = animalOf("duck");
+          m.spawnT += dt; if (m.spawnT > 750 && m.items.length < 7 && m.phase === "play") { m.spawnT = 0; m.items.push({ x: d.x + (Math.random() - 0.5) * S * 0.1, y: d.y - S * 0.05, vy: -S * (0.00012 + Math.random() * 0.00008), ph: Math.random() * TAU, r: S * (0.045 + Math.random() * 0.025), t: 0 }); }
+          for (let i = m.items.length - 1; i >= 0; i--) { const b = m.items[i]; b.t += dt; b.y += b.vy * dt; b.x += Math.sin(now * 0.003 + b.ph) * S * 0.00006 * dt; if (b.t > 7000 || b.y < m.A.y - S * 0.6) m.items.splice(i, 1); }
+          if (m.phase === "win" && m.t > m.dur) endMini(true);
+        }
+      }
+      function miniClick(wx, wy) {
+        const m = mini; if (m.done) return true;
+        if (Math.hypot(wx - m.A.x, wy - m.A.y) > S * 0.95) { mini = null; return false; }   // walk away = leave the game
+        if (m.kind === "shell") {
+          if (m.phase !== "pick") return true;
+          let hit = -1; m.pads.forEach(function (pd, i) { if (Math.hypot(wx - pd.x, wy - pd.y) < S * 0.11) hit = i; });
+          if (hit < 0) return true;
+          m.picked = hit; setPhase("reveal", 1600);
+          if (hit === m.turtle) { m.wins++; ctx.audio.arp([659, 784, 1046], { dur: 0.14, step: 0.07, vol: 0.11, type: "sine" }); say("Yes!"); confetti(m.pads[hit].x, m.pads[hit].y - S * 0.05); fx.push({ kind: "star", x: m.pads[hit].x, y: m.pads[hit].y - S * 0.12, t: 0, dur: 900 }); }
+          else { ctx.audio.tone(330, 0.15, { type: "sine", vol: 0.06, glide: 300 }); say("Try again!"); }
+          return true;
+        }
+        if (m.kind === "flowers") {
+          if (m.phase !== "input") return true;
+          let hit = -1; m.items.forEach(function (f, i) { if (Math.hypot(wx - f.x, wy - f.y) < S * 0.1) hit = i; });
+          if (hit < 0) return true;
+          const f = m.items[hit]; f.glow = 400;
+          if (hit === m.seq[m.input.length]) { m.input.push(hit); ctx.audio.tone(f.note, 0.22, { type: "sine", vol: 0.1 }); if (m.input.length >= m.seq.length) { m.wins++; m.round++; setPhase("win", 1200); ctx.audio.arp([784, 1046, 1318], { dur: 0.14, step: 0.07, vol: 0.11, type: "sine", when: 0.25 }); say("Yes!"); confetti(m.A.x, m.A.y); const b = animalOf("bee"); if (b) b.sq = 1; } }
+          else { ctx.audio.tone(300, 0.15, { type: "sine", vol: 0.06, glide: 260 }); setPhase("retry", 900); }
+          return true;
+        }
+        if (m.kind === "bubbles") {
+          if (m.phase !== "play") return true;
+          let best = -1, bd = S * 0.09; m.items.forEach(function (b, i) { const d = Math.hypot(wx - b.x, wy - b.y); if (d < bd + b.r * 0.5) { bd = d; best = i; } });
+          if (best < 0) return true;
+          const b = m.items.splice(best, 1)[0]; m.score++;
+          ctx.audio.tone(PENTA[m.score % PENTA.length], 0.18, { type: "sine", vol: 0.1, glide: PENTA[m.score % PENTA.length] * 1.5 });
+          for (let k = 0; k < 8; k++) fx.push({ kind: "spark", x: b.x, y: b.y, vx: (Math.random() - 0.5) * S * 0.0005, vy: (Math.random() - 0.5) * S * 0.0005, t: 0, dur: 450, col: "#bfe9ff" });
+          ripples.push({ x: b.x, y: b.y, t: 0, dur: 400, r: b.r * 2 });
+          if (m.score >= m.target) { setPhase("win", 600); const d = animalOf("duck"); if (d) { d.sq = 1; d.talk = 2000; } sndAnimal("duck"); }
+          return true;
+        }
+        return true;
+      }
+      function drawMiniSign(m) {
+        const sg = miniSign(m), x = sg.x - cam.x, y = sg.y - cam.y, h = S * 0.14;
+        const idle = !mini || mini.kind !== m.kind;
+        if (idle) { const k = 0.5 + 0.5 * Math.sin(now * 0.004 + m.kind.length); g.fillStyle = "rgba(255,211,107," + (0.1 + k * 0.12) + ")"; dot(g, x, y - h * 0.5, S * 0.08 + k * S * 0.012); }
+        g.fillStyle = "#8a5a2e"; rr(g, x - S * 0.008, y - h, S * 0.016, h, S * 0.005); g.fill();
+        g.fillStyle = "#f4e2c2"; g.shadowColor = "#ffd36b"; g.shadowBlur = S * 0.015; dot(g, x, y - h, S * 0.055); g.shadowBlur = 0;
+        g.save(); g.translate(x, y - h);
+        if (m.kind === "shell") { g.fillStyle = "#2f8a5e"; ell(g, 0, 0, S * 0.03, S * 0.022); g.fill(); g.fillStyle = "#7fe0a0"; dot(g, 0, -S * 0.004, S * 0.009); dot(g, -S * 0.015, S * 0.004, S * 0.007); dot(g, S * 0.015, S * 0.004, S * 0.007); }
+        else if (m.kind === "flowers") { PICT.flower(g, S * 0.028); }
+        else { g.strokeStyle = "#74b9ff"; g.lineWidth = S * 0.005; g.beginPath(); g.arc(-S * 0.008, S * 0.006, S * 0.02, 0, TAU); g.stroke(); g.beginPath(); g.arc(S * 0.018, -S * 0.014, S * 0.011, 0, TAU); g.stroke(); g.fillStyle = "#fff"; dot(g, -S * 0.015, -S * 0.002, S * 0.004); }
+        g.restore();
+      }
+      function drawTurtleSmall(x, y, r) { g.fillStyle = "#3fa66a"; ell(g, x + r * 1.1, y - r * 0.1, r * 0.45, r * 0.4); g.fill(); g.fillStyle = "#2f8a5e"; ell(g, x, y, r * 1.05, r * 0.75); g.fill(); g.fillStyle = "#7fe0a0"; dot(g, x, y - r * 0.15, r * 0.28); eyes(g, x + r * 1.2, y - r * 0.2, r * 0.12, r * 0.001, false); }
+      function drawMini() {
+        const m = mini, ox = -cam.x, oy = -cam.y;
+        if (m.kind === "shell") {
+          m.pads.forEach(function (pd, i) {
+            const x = pd.x + ox, y = pd.y + oy, r = S * 0.085, lift = (m.phase === "show" || m.phase === "reveal") && i === m.turtle ? Math.min(1, m.t / 250) : 0;
+            const wrongPick = m.phase === "reveal" && m.picked === i && i !== m.turtle;
+            if (lift > 0) { drawTurtleSmall(x, y - r * 0.15, S * 0.04); }
+            g.save(); g.translate(x, y - lift * r * 0.9); g.fillStyle = m.phase === "pick" ? "#4fb877" : "#3fa66a"; g.shadowColor = "#7fe0a0"; g.shadowBlur = m.phase === "pick" ? S * 0.025 : 0; g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, r, 0.3, TAU - 0.3); g.closePath(); g.fill(); g.shadowBlur = 0; g.fillStyle = "rgba(255,255,255,0.12)"; ell(g, -r * 0.2, -r * 0.25, r * 0.4, r * 0.2); g.fill();
+            if (wrongPick) { g.fillStyle = "rgba(255,255,255,0.8)"; g.font = "800 " + Math.round(S * 0.05) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("?", 0, 0); }
+            g.restore();
+          });
+          if (m.phase === "reveal" && m.picked === m.turtle) { g.save(); g.translate(m.pads[m.turtle].x + ox, m.pads[m.turtle].y + oy - S * 0.2); PICT.heart(g, S * 0.03); g.restore(); }
+          for (let i = 0; i < 3; i++) { g.fillStyle = i < m.wins ? "#ffd36b" : "rgba(255,255,255,0.2)"; g.save(); g.translate(m.A.x + ox + (i - 1) * S * 0.05, m.A.y + oy - S * 0.2); PICT.star(g, S * 0.016); g.restore(); }
+        } else if (m.kind === "flowers") {
+          m.items.forEach(function (f) { const x = f.x + ox, y = f.y + oy, gl = f.glow > 0 ? 1 : 0; g.save(); if (gl) { g.shadowColor = f.col; g.shadowBlur = S * 0.04; } g.strokeStyle = "#3fa66a"; g.lineWidth = S * 0.012; g.lineCap = "round"; g.beginPath(); g.moveTo(x, y + S * 0.03); g.lineTo(x, y + S * 0.11); g.stroke(); g.fillStyle = f.col; for (let k = 0; k < 6; k++) { const a = k * TAU / 6 + now * 0.0005; dot(g, x + Math.cos(a) * S * 0.035 * (1 + gl * 0.25), y + Math.sin(a) * S * 0.035 * (1 + gl * 0.25), S * 0.024); } g.fillStyle = "#ffe9a0"; dot(g, x, y, S * 0.02); g.restore(); });
+          drawAnimal(Object.assign({}, animalOf("bee") || { kind: "bee", t: now, ph: 0, sq: 0, talk: 0 }, { x: m.bee.x + ox, y: m.bee.y + oy, face: m.bee.x < m.A.x ? 1 : -1, z: 0 }));
+          for (let i = 0; i < 3; i++) { g.fillStyle = i < m.wins ? "#ffd36b" : "rgba(255,255,255,0.2)"; g.save(); g.translate(m.A.x + ox + (i - 1) * S * 0.05, m.A.y + oy - S * 0.2); PICT.star(g, S * 0.016); g.restore(); }
+          if (m.phase === "input") { g.fillStyle = "rgba(255,255,255,0.7)"; g.font = "800 " + Math.round(S * 0.04) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("👆", m.A.x + ox, m.A.y + oy - S * 0.28 + Math.sin(now * 0.006) * S * 0.01); }
+        } else if (m.kind === "bubbles") {
+          m.items.forEach(function (b) { const x = b.x + ox, y = b.y + oy; g.save(); g.strokeStyle = "rgba(191,233,255,0.85)"; g.lineWidth = Math.max(1.5, S * 0.004); g.fillStyle = "rgba(191,233,255,0.12)"; g.beginPath(); g.arc(x, y, b.r, 0, TAU); g.fill(); g.stroke(); g.fillStyle = "rgba(255,255,255,0.8)"; dot(g, x - b.r * 0.35, y - b.r * 0.35, b.r * 0.15); g.restore(); });
+          for (let i = 0; i < m.target; i++) { g.fillStyle = i < m.score ? "#74b9ff" : "rgba(255,255,255,0.18)"; dot(g, m.A.x + ox + (i - (m.target - 1) / 2) * S * 0.03, m.A.y + oy - S * 0.42, S * 0.009); }
+        }
+      }
+
       // ---- the rabbit race ----
       function raceStartPos() { return { x: RACE.x0 * W + S * 0.06, y: RACE.y * W + S * 0.075 }; }
       function bunny() { return animals.find(function (a) { return a.kind === "bunny"; }); }
@@ -287,6 +410,7 @@
         if (fadeDir) { fade += fadeDir * dt / 260; if (fade >= 1) { fade = 1; if (pendingScene) applyScene(); fadeDir = -1; } if (fade <= 0) { fade = 0; fadeDir = 0; } }
         if (press && !press.done && now - press.t > 380 && touchDevice) { press.done = true; shootTongue(press.wx, press.wy); }
         if (race) updateRace(dt);
+        if (mini) updateMini(dt);
         // frog movement: hop toward target (swim when in a pond)
         const f = frog, R = frogR();
         f.blink -= dt; if (f.blink < -2600 - Math.random() * 2000) f.blink = 160;
@@ -314,7 +438,7 @@
           }
         } else {
           f.swim = pond ? 1 : 0;
-          if (f.goal) { const gl = f.goal; f.goal = null; if (gl.type === "animal") talk(gl.a); else if (gl.type === "house") enterHouse(gl.i); else if (gl.type === "door") leaveHouse(); else if (gl.type === "toad") toadTalk(); else if (gl.type === "race") startRace(); }
+          if (f.goal) { const gl = f.goal; f.goal = null; if (gl.type === "animal") talk(gl.a); else if (gl.type === "house") enterHouse(gl.i); else if (gl.type === "door") leaveHouse(); else if (gl.type === "toad") toadTalk(); else if (gl.type === "race") startRace(); else if (gl.type === "mini") startMini(gl.kind); }
         }
         if (!pond) f.swim = 0;
         // tongue
@@ -335,7 +459,7 @@
         animals.forEach(function (a) {
           a.t += dt; if (a.sq > 0) a.sq = Math.max(0, a.sq - dt / 400); if (a.talk > 0) a.talk -= dt;
           if (a.kind === "duck") { const p = PONDS[a.pond]; a.x = p.x * W + Math.cos(a.t * 0.0004 + a.ph) * p.rx * W * 0.55; a.y = p.y * W + Math.sin(a.t * 0.0004 + a.ph) * p.ry * W * 0.55; a.face = Math.cos(a.t * 0.0004 + a.ph + 1.57) < 0 ? -1 : 1; if (Math.floor(a.t / 700) !== Math.floor((a.t - dt) / 700)) ripples.push({ x: a.x, y: a.y + S * 0.02, t: 0, dur: 1200, r: S * 0.09 }); }
-          else if (a.kind === "bee") { a.x = a.hx + Math.cos(a.t * 0.0012) * S * 0.16; a.y = a.hy + Math.sin(a.t * 0.0024) * S * 0.08; a.face = Math.sin(a.t * 0.0012) > 0 ? -1 : 1; }
+          else if (a.kind === "bee") { if (mini && mini.kind === "flowers") { a.x = mini.bee.x; a.y = mini.bee.y; return; } a.x = a.hx + Math.cos(a.t * 0.0012) * S * 0.16; a.y = a.hy + Math.sin(a.t * 0.0024) * S * 0.08; a.face = Math.sin(a.t * 0.0012) > 0 ? -1 : 1; }
           else if (a.kind === "butterfly") { a.x = a.hx + Math.sin(a.t * 0.0007) * S * 0.2; a.y = a.hy + Math.sin(a.t * 0.0019) * S * 0.12; a.face = Math.cos(a.t * 0.0007) < 0 ? -1 : 1; }
           else if (a.kind === "bunny") { if (race) return; const ph = (a.t % 2600) / 2600; a.z = ph < 0.3 ? Math.sin(ph / 0.3 * Math.PI) : 0; a.x = a.hx + Math.sin(a.t * 0.0005) * S * 0.18; a.face = Math.cos(a.t * 0.0005) < 0 ? -1 : 1; }
           else if (a.kind === "snail" || a.kind === "turtle" || a.kind === "ladybug") { a.x = a.hx + Math.sin(a.t * 0.00025 + a.ph) * S * 0.1; a.face = Math.cos(a.t * 0.00025 + a.ph) < 0 ? -1 : 1; }
@@ -471,7 +595,9 @@
           if (vis(fx0, fy, S * 0.3)) items.push({ y: fy + S * 0.1, f: function () { drawFlag(fx0 - cam.x, fy - cam.y, true); } });
           if (vis(fx1, fy, S * 0.3)) items.push({ y: fy + S * 0.1, f: function () { drawFlag(fx1 - cam.x, fy - cam.y, false); } }); }
         HOUSES.forEach(function (h) { const x = h.x * W, y = h.y * W; if (vis(x, y, S * 0.3)) items.push({ y: y + S * 0.1, f: function () { drawHouse(h, x - cam.x, y - cam.y); } }); });
-        animals.forEach(function (a) { if (vis(a.x, a.y, S * 0.3)) items.push({ y: a.y + (a.kind === "owl" ? -S * 0.2 : 0), f: function () { if (a.kind !== "duck" && a.kind !== "owl") drawShadow(a.x - cam.x, a.y - cam.y, S * 0.05, a.z || 0); drawAnimal(Object.assign({}, a, { x: a.x - cam.x, y: a.y - cam.y })); } }); });
+        animals.forEach(function (a) { if (mini && mini.kind === "flowers" && a.kind === "bee") return; if (vis(a.x, a.y, S * 0.3)) items.push({ y: a.y + (a.kind === "owl" ? -S * 0.2 : 0), f: function () { if (a.kind !== "duck" && a.kind !== "owl") drawShadow(a.x - cam.x, a.y - cam.y, S * 0.05, a.z || 0); drawAnimal(Object.assign({}, a, { x: a.x - cam.x, y: a.y - cam.y })); } }); });
+        MINIS.forEach(function (m) { const sg = miniSign(m); if (vis(sg.x, sg.y, S * 0.3)) items.push({ y: sg.y, f: function () { drawMiniSign(m); } }); });
+        if (mini) items.push({ y: mini.A.y + S * 0.001, f: drawMini });
         // the owl sits in the tree at (0.68,0.12) → draw above the canopy
         items.push({ y: frog.y + (frog.swim ? -S : 0), f: function () { drawTheFrog(); } });
         items.sort(function (a, b) { return a.y - b.y; });
@@ -561,6 +687,9 @@
         if (fadeDir) return;
         const wx = scene === "world" ? x + cam.x : x, wy = scene === "world" ? y + cam.y : y;
         if (race) { raceClick(); return; }
+        if (mini) { if (miniClick(wx, wy)) return; }
+        // mini-game signposts (turtle shells, bee flowers, duck bubbles)
+        for (let k = 0; k < MINIS.length; k++) { const sg = miniSign(MINIS[k]); if (Math.hypot(wx - sg.x, wy - (sg.y - S * 0.1)) < S * 0.12) { const A = miniAnchor(MINIS[k]); goTo(A.x, A.y + S * 0.3, { type: "mini", kind: MINIS[k].kind }); return; } }
         // tap the frog itself -> ribbit
         if (Math.hypot(wx - frog.x, wy - frog.y) < frogR() * 1.6) { sndRibbit(); frog.sq = 1; frog.happy = 1200; fx.push({ kind: "star", x: frog.x, y: frog.y - frogR() * 1.6, t: 0, dur: 900 }); return; }
         if (scene === "house") {
@@ -597,7 +726,7 @@
           g = canvas.getContext("2d");
           wrap.appendChild(canvas);
           const hint = document.createElement("div"); hint.className = "hint";
-          hint.textContent = touchDevice ? "Tap: hop there. Hold: tongue! Tap animals to say hi, tap a house to go in, tap the flag to race the bunny." : "Left-click: hop there. Right-click: tongue! Click animals to say hi, a house to go in, the flag to race the bunny.";
+          hint.textContent = touchDevice ? "Tap: hop there. Hold: tongue! Tap animals to say hi, a house to go in, the flag to race the bunny, a signpost to play a game." : "Left-click: hop there. Right-click: tongue! Click animals, houses, the race flag, or a signpost to play a mini-game.";
           wrap.appendChild(hint);
           stage.appendChild(wrap);
           ctxMenu = function (e) { e.preventDefault(); }; canvas.addEventListener("contextmenu", ctxMenu);
@@ -608,7 +737,7 @@
           ctx.setScore(0);
           Arcade.input.setPointerTarget(canvas);
           unResize = Arcade.board.onResize(function () { resize(); });
-          Arcade._frog = { get: function () { return { frog: frog, flies: flies, animals: animals, scene: scene, cam: cam, S: S, W: W, eaten: eaten, race: race, race0: { x: RACE.x0 * W, x1: RACE.x1 * W, y: RACE.y * W }, houses: HOUSES.map(function (h) { return { x: h.x * W, y: h.y * W }; }) }; } };
+          Arcade._frog = { get: function () { return { frog: frog, flies: flies, animals: animals, scene: scene, cam: cam, S: S, W: W, eaten: eaten, mini: mini, signs: MINIS.map(function (m) { return Object.assign({ kind: m.kind }, miniSign(m), { A: miniAnchor(m) }); }), race: race, race0: { x: RACE.x0 * W, x1: RACE.x1 * W, y: RACE.y * W }, houses: HOUSES.map(function (h) { return { x: h.x * W, y: h.y * W }; }) }; } };
           draw();
         },
         handleInput(intent) {

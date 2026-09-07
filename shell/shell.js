@@ -47,12 +47,18 @@
     muteBtn = el("button", "icon-btn", audio.muted ? "🔇" : "🔈");
     muteBtn.title = "mute sound effects (M)";
     muteBtn.onclick = toggleMute;
+    // FX toggle: low-effects mode for slow machines (auto-enabled by shell/perf.js when a game runs under ~22 fps)
+    const fxBtn = el("button", "icon-btn", "✨");
+    const fxSync = () => { const low = A.perf && A.perf.isLow(); fxBtn.textContent = low ? "🐢" : "✨"; fxBtn.title = low ? "Low effects ON (glows off for speed) — click for full effects" : "Full effects — click to turn glows off (faster on slow PCs)"; fxBtn.classList.toggle("on", !!low); };
+    fxBtn.onclick = () => { if (A.perf) A.perf.setLow(!A.perf.isLow()); fxSync(); };
+    document.addEventListener("arcade:lowfx", fxSync); fxSync();
 
     right.appendChild(secondaryTimer);
     right.appendChild(scoreStat);
     right.appendChild(timerStat);
     right.appendChild(shuffleBtn);
     right.appendChild(musicBtn);
+    right.appendChild(fxBtn);
     right.appendChild(muteBtn);
 
     hud.appendChild(left); hud.appendChild(right);
@@ -560,5 +566,5 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 
-  A.shell = { toHub, launch, enterKidMode, exitKidMode };
+  A.shell = { toHub, launch, enterKidMode, exitKidMode, current: () => current };
 })();

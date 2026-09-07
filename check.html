@@ -29,7 +29,7 @@
 
 <script>
 (function () {
-  const out = { ua: navigator.userAgent, screen: screen.width + "x" + screen.height + " dpr" + (window.devicePixelRatio || 1) + " win" + innerWidth + "x" + innerHeight, loaded: [], failed: [], errors: [], games: [], kid: [], fps: null, draw: null, kidhub: null };
+  const out = { ua: navigator.userAgent, screen: screen.width + "x" + screen.height + " dpr" + (window.devicePixelRatio || 1) + " win" + innerWidth + "x" + innerHeight, loaded: [], failed: [], errors: [], games: [], kid: [], fps: null, draw: null, kidhub: null, lowfx: null };
   const $ = (id) => document.getElementById(id);
   $("ua").textContent = navigator.userAgent + " · " + screen.width + "×" + screen.height + " · dpr " + (window.devicePixelRatio || 1) + " · cores " + (navigator.hardwareConcurrency || "?") + " · touch " + (navigator.maxTouchPoints || 0);
   window.addEventListener("error", function (e) { out.errors.push((e.filename || "").split("/").pop() + ":" + e.lineno + " " + e.message); render(); });
@@ -41,7 +41,8 @@
     out.games = g.map((x) => x.id); out.kid = g.filter((x) => x.kid || x.kidOpts).map((x) => x.id);
     $("games").innerHTML = g.length + " games · kid hub: " + out.kid.length + " <br><small>" + out.kid.join(", ") + "</small>";
     $("errs").innerHTML = out.errors.length ? out.errors.map((e) => "<div class='bad'>" + e + "</div>").join("") : "<span class='ok'>none</span>";
-    if (out.fps !== null) $("speed").innerHTML = (out.fps < 30 ? "<span class='bad'>" : out.fps < 50 ? "<span class='warn'>" : "<span class='ok'>") + out.fps + " fps</span> on a heavy canvas test (glow-heavy, like the games) · plain draw " + out.draw + " ms/frame";
+    out.lowfx = (function () { try { return localStorage.getItem("neonarcade:lowfx") === "1"; } catch (e) { return null; } })();
+    if (out.fps !== null) $("speed").innerHTML = (out.lowfx ? "<span class='warn'>low-FX mode is ON for this browser · </span>" : "") + (out.fps < 30 ? "<span class='bad'>" : out.fps < 50 ? "<span class='warn'>" : "<span class='ok'>") + out.fps + " fps</span> on a heavy canvas test (glow-heavy, like the games) · plain draw " + out.draw + " ms/frame";
     $("report").value = JSON.stringify(out, null, 1);
   }
   window.copyReport = function () { $("report").select(); document.execCommand("copy"); };
