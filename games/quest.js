@@ -384,7 +384,7 @@
       }
 
       // ---- player ----
-      function newPlayer(x, y) { p = { x: x, y: y, tx: x, ty: y, face: 1, hop: null, rest: 0, z: 0, sq: 0, hp: save.hpMax, stam: 100, iframes: 0, slow: 0, tongue: null, tcd: 0, shieldCd: 0, zip: 0, hurt: 0, swim: 0, kick: 0, blink: 0, happy: 0, dead: false, dodge: 0 }; }
+      function newPlayer(x, y) { p = { x: x, y: y, tx: x, ty: y, face: 1, hop: null, rest: 0, z: 0, sq: 0, hp: save.hpMax, stam: 100, iframes: 0, slow: 0, tongue: null, tcd: 0, shieldCd: 0, zip: 0, hurt: 0, swim: 0, kick: 0, blink: 0, happy: 0, dead: false, dodge: 0, stamDelay: 0 }; }
       function goTo(x, y) {
         if (p.dead) return;
         x = clamp(x, S * 0.05, W - S * 0.05); y = clamp(y, S * 0.08, H - S * 0.05);
@@ -402,7 +402,7 @@
       function strike(x, y) {
         if (p.dead || p.tongue || p.tcd > 0) return;
         if (p.stam < 8 && !p.zip) { A().tone(300, 0.08, { type: "sine", vol: 0.04, glide: 200 }); fx.push({ kind: "txt", x: p.x, y: p.y - frogR() * 2, t: 0, dur: 700, text: "tired…", col: "#74b9ff" }); return; }
-        if (!p.zip) p.stam -= 8;
+        if (!p.zip) { p.stam -= 8; p.stamDelay = 600; }
         const oy = p.y - frogR() * 0.05, dx = x - p.x, dy = y - oy, d = Math.hypot(dx, dy) || 1, max = tongueRange();
         let tx = dx / d * Math.min(d, max), ty = dy / d * Math.min(d, max);
         const L = Math.hypot(tx, ty), ux = tx / L, uy = ty / L;
@@ -677,7 +677,7 @@
         const f = p, R = ROOM();
         f.blink -= dt; if (f.blink < -2600 - Math.random() * 2000) f.blink = 160;
         if (f.sq > 0) f.sq = Math.max(0, f.sq - dt / 300); if (f.happy > 0) f.happy -= dt; if (talking) { talking.t -= dt; if (talking.t <= 0) talking = null; }
-        f.stam = Math.min(100, f.stam + dt * 0.05);
+        f.stam = Math.min(100, f.stam + dt * 0.06);
         // soup: a heart every 2.5 s while you rest inside
         if (Math.floor(houseT / 2500) !== Math.floor((houseT - dt) / 2500) && f.hp < save.hpMax) { f.hp++; f.happy = 900; spark(f.x, f.y - frogR(), "#ff8fa3", 8); A().arp([659, 784], { dur: 0.1, step: 0.08, vol: 0.06, type: "sine" }); fx.push({ kind: "txt", x: f.x, y: f.y - frogR() * 2.2, t: 0, dur: 800, text: "+1 ♥", col: "#ff8fa3" }); }
         const dx = f.tx - f.x, dy = f.ty - f.y, dist = Math.hypot(dx, dy);
@@ -711,7 +711,8 @@
         if (f.sq > 0) f.sq = Math.max(0, f.sq - dt / 300);
         if (f.dodge > 0) f.dodge -= dt; if (jumpFlash > 0) jumpFlash -= dt; if (talking) { talking.t -= dt; if (talking.t <= 0) talking = null; }
         if (f.happy > 0) f.happy -= dt; if (f.iframes > 0) f.iframes -= dt; if (f.hurt > 0) f.hurt -= dt; if (f.slow > 0) f.slow -= dt; if (f.tcd > 0) f.tcd -= dt; if (f.shieldCd > 0) f.shieldCd -= dt; if (f.zip > 0) f.zip -= dt;
-        f.stam = Math.min(100, f.stam + dt * (f.zip > 0 ? 0.2 : 0.016));
+        if (f.stamDelay > 0) f.stamDelay -= dt;
+        f.stam = Math.min(100, f.stam + dt * (f.zip > 0 ? 0.2 : inSafeZone(f.x, f.y) ? 0.03 : f.stamDelay > 0 ? 0 : 0.009));   // slow regen, paused ~0.8 s after spending; campfire refills faster
         if (!panel && !f.dead) {
           const pond = pondAt(f.x, f.y);
           const dx = f.tx - f.x, dy = f.ty - f.y, dist = Math.hypot(dx, dy);
@@ -722,17 +723,18 @@
             if (f.superHop > 0) { f.superHop -= dt; f.z *= 2.6; }
             if (k >= 1) { f.hop = null; f.z = 0; f.rest = 60; f.sq = 0.6; f.superHop = 0; const wp = pondAt(f.x, f.y); if (wp) { f.swim = 1; ripples.push({ x: f.x, y: f.y, t: 0, dur: 900, r: R * 3 }); A().tone(520, 0.1, { type: "sine", vol: 0.05, glide: 160 }); } else A().tone(140, 0.05, { type: "sine", vol: 0.05, glide: 90 }); }
           } else if (pond && dist > R * 0.4) {
-            const sp = S * 0.00032 * (has("boots") ? 1.6 : 1) * slowK, step = Math.min(dist, sp * dt);
+            if (!f.zip) { f.stam = Math.max(0, f.stam - dt * 0.003); f.stamDelay = 300; }
+            const sp = S * 0.00032 * (has("boots") ? 1.6 : 1) * slowK * (f.stam <= 0 && !f.zip ? 0.55 : 1), step = Math.min(dist, sp * dt);
             f.x += dx / dist * step; f.y += dy / dist * step; f.face = Math.abs(dx) > S * 0.005 ? (dx < 0 ? -1 : 1) : f.face;
             f.kick += dt; if (f.kick > 420) { f.kick = 0; ripples.push({ x: f.x, y: f.y + R * 0.3, t: 0, dur: 800, r: R * 2.2 }); }
             f.swim = 1;
           } else if (dist > R * 0.4) {
             f.rest -= dt;
             if (f.rest <= 0) {
-              const len = Math.min(dist, hopLen() * slowK * (f.stam <= 0 && !f.zip ? 0.5 : 1));
+              const len = Math.min(dist, hopLen() * slowK * (f.stam <= 0 && !f.zip ? 0.45 : 1));
               f.hop = { x0: f.x, y0: f.y, x1: f.x + dx / dist * len, y1: f.y + dy / dist * len, t: 0, dur: 280 + len / S * 500 };
               if (Math.abs(dx) > S * 0.01) f.face = dx < 0 ? -1 : 1;
-              if (!f.zip) f.stam = Math.max(0, f.stam - 3);
+              if (!f.zip) { f.stam = Math.max(0, f.stam - 6); f.stamDelay = 600; }
               sndHop();
             }
           } else { f.swim = pond ? 1 : 0; if (f.goal && f.goal.type === "house") { const gl = f.goal; f.goal = null; enterHouse(gl.i); } else if (f.goal && f.goal.type === "npc") { const gl = f.goal; f.goal = null; talkTo(gl.npc, gl.x, gl.y); } else if (f.goal && f.goal.type === "chest") { const gl = f.goal; f.goal = null; openChest(gl.i, gl.k, gl.x, gl.y); } else if (f.goal && f.goal.type === "poi") { const gl = f.goal; f.goal = null; visitPoi(gl.i, gl.k, gl.pp); } else if (f.goal && f.goal.type === "smith") { const gl = f.goal; f.goal = null; panel = { kind: gl.kind }; sndClick(); } }
@@ -1046,7 +1048,7 @@
         // hearts
         for (let i = 0; i < save.hpMax; i++) { g.save(); g.translate(S * 0.045 + i * S * 0.042, S * 0.045); g.fillStyle = i < p.hp ? "#ff6b8a" : "rgba(255,255,255,0.15)"; if (i < p.hp) { g.shadowColor = "#ff6b8a"; g.shadowBlur = S * 0.012; } SHAPE.heart(g, S * 0.016); g.restore(); }
         // stamina
-        g.fillStyle = "rgba(255,255,255,0.12)"; rr(g, S * 0.03, S * 0.075, S * 0.22, S * 0.014, S * 0.007); g.fill(); g.fillStyle = p.zip > 0 ? "#ffd36b" : "#74b9ff"; rr(g, S * 0.03, S * 0.075, S * 0.22 * p.stam / 100, S * 0.014, S * 0.007); g.fill();
+        g.fillStyle = "rgba(255,255,255,0.12)"; rr(g, S * 0.03, S * 0.075, S * 0.22, S * 0.014, S * 0.007); g.fill(); g.fillStyle = p.zip > 0 ? "#ffd36b" : p.stam < 12 ? (Math.floor(now / 200) % 2 ? "#ff6b6b" : "#ff8fa3") : "#74b9ff"; rr(g, S * 0.03, S * 0.075, S * 0.22 * p.stam / 100, S * 0.014, S * 0.007); g.fill(); if (p.stam < 12 && p.zip <= 0) { g.fillStyle = "rgba(255,107,107,0.9)"; g.font = "700 " + Math.round(S * 0.016) + "px system-ui, sans-serif"; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText("tired", S * 0.26, S * 0.082); }
         // biome + token progress (center)
         g.save(); g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "rgba(230,236,245,0.85)"; g.font = "700 " + Math.round(S * 0.024) + "px system-ui, sans-serif"; g.fillText(inArena(p.x) ? "The Castle" : b.name, S / 2, S * 0.035);
         g.translate(S / 2 - S * 0.035, S * 0.075); g.fillStyle = b.tokenCol; g.shadowColor = b.tokenCol; g.shadowBlur = S * 0.015; SHAPE[b.token](g, S * 0.016); g.shadowBlur = 0; g.fillStyle = "#e6ecf5"; g.font = "800 " + Math.round(S * 0.026) + "px system-ui, sans-serif"; g.textAlign = "left"; g.fillText(save.tokens[bi] + " / " + b.need, S * 0.03, 0); g.restore();
