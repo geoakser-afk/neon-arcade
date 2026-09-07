@@ -186,8 +186,8 @@
     gator: { hp: 14, dmg: 2, speed: 0.0004, aggro: 0.5, leash: 0.9, gems: 20, tokens: 12, size: 1.3, r: 0.09, water: true },
     spider: { hp: 10, dmg: 1, speed: 0.00018, aggro: 0.65, leash: 1.1, gems: 18, tokens: 12, size: 1, r: 0.06, shoots: true },
     scorpion: { hp: 16, dmg: 2, speed: 0.0002, aggro: 0.6, leash: 1.1, gems: 26, tokens: 16, size: 1.1, r: 0.07, charges: true },
-    guard: { hp: 22, dmg: 2, speed: 0.0003, aggro: 0.7, leash: 1.2, gems: 34, tokens: 18, size: 1.1, r: 0.07 },
-    king: { hp: 140, dmg: 3, speed: 0.00028, aggro: 9, leash: 9, gems: 300, tokens: 0, size: 2.4, r: 0.16 }
+    guard: { hp: 30, dmg: 2, speed: 0.00032, aggro: 0.7, leash: 1.2, gems: 34, tokens: 18, size: 1.1, r: 0.07 },
+    king: { hp: 260, dmg: 3, speed: 0.00032, aggro: 9, leash: 9, gems: 300, tokens: 0, size: 2.4, r: 0.16 }
   };
   // shop items. tier = first biome (index) where the item is sold. kind: weapon | armor | potion
   const ITEMS = [
@@ -260,10 +260,10 @@
   // every gate guardian has its OWN mechanic (George: "the jumping gets repetitive")
   const MINIBOSS = [
     { kind: "snake", name: "Slither the Long", hp: 45, size: 2.2, dmg: 1, gems: 80, gimmick: "slam", intro: "Slither the Long blocks the gate. When JUMP! appears — click. Any left-click jumps the shockwave." },
-    { kind: "gator", name: "Mawgrim, Elder Gator", hp: 65, size: 2.0, dmg: 2, gems: 110, gimmick: "chomp", intro: "Mawgrim rises. His CHOMP sends a wave in one direction — step out of its line. When the whole pond surges, get OUT of the water." },
-    { kind: "spider", name: "Silka, Spider Queen", hp: 70, size: 2.1, dmg: 2, gems: 140, gimmick: "brood", intro: "Silka is SHIELDED while her brood lives. Squash the spiderlings, then strike the Queen. Don't stand in her webs." },
-    { kind: "scorpion", name: "Duneclaw", hp: 85, size: 2.0, dmg: 3, gems: 180, gimmick: "meteor", intro: "Duneclaw calls METEORS. Red circles mark where they land — don't be standing there. Keep moving." },
-    { kind: "guard", name: "Sir Croakalot", hp: 100, size: 1.9, dmg: 3, gems: 220, gimmick: "parry", intro: "Sir Croakalot. He RAISES his spear before every swing — strike him during the raise to PARRY and break his guard." }
+    { kind: "gator", name: "Mawgrim, Elder Gator", hp: 90, size: 2.0, dmg: 2, gems: 110, gimmick: "chomp", intro: "Mawgrim rises. His CHOMP sends a wave in one direction — step out of its line. When the whole pond surges, get OUT of the water." },
+    { kind: "spider", name: "Silka, Spider Queen", hp: 110, size: 2.1, dmg: 2, gems: 140, gimmick: "brood", intro: "Silka is SHIELDED while her brood lives. Squash the spiderlings, then strike the Queen. Don't stand in her webs." },
+    { kind: "scorpion", name: "Duneclaw", hp: 140, size: 2.0, dmg: 3, gems: 180, gimmick: "meteor", intro: "Duneclaw calls METEORS. Red circles mark where they land — don't be standing there. Keep moving." },
+    { kind: "guard", name: "Sir Croakalot", hp: 220, size: 1.9, dmg: 4, gems: 220, gimmick: "parry", intro: "Sir Croakalot. He RAISES his spear before every swing — strike him during the raise to PARRY and break his guard." }
   ];
 
   Arcade.register({
@@ -527,8 +527,8 @@
           if (d < S * 0.35 && Math.random() < 0.4) { e.tele = { t: 0, dur: 500, kind: "crouch", fire: function () { e.charge = { vx: (p.x - e.x) / d * S * 0.0011, vy: (p.y - e.y) / d * S * 0.0011, t: 0, dur: 600 }; } }; }
         } else if (gk === "parry") {             // raises spear (parry window) → sweep. Parry = strike during the raise → stun + shield break
           if (e.stun > 0) return;
-          if (e.shield <= 0 && Math.random() < 0.3) { e.cd = 2500; e.shield = 3000; fx.push({ kind: "txt", x: e.x, y: e.y - S * 0.15, t: 0, dur: 800, text: "GUARD UP", col: "#74b9ff" }); }
-          else if (d < S * 0.5) { e.cd = 2800; e.parry = true; e.tele = { t: 0, dur: 900, kind: "raise", fire: function () { e.parry = false; hazards.push({ type: "arc", x: e.x, y: e.y, ang: Math.atan2(p.y - e.y, p.x - e.x), t: 0, dur: 350, r: S * 0.36, dmg: 3 }); A().tone(500, 0.15, { type: "sawtooth", vol: 0.07, glide: 200 }); } }; }
+          if (e.shield <= 0 && Math.random() < 0.4) { e.cd = 2200; e.shield = 3500; fx.push({ kind: "txt", x: e.x, y: e.y - S * 0.15, t: 0, dur: 800, text: "GUARD UP", col: "#74b9ff" }); }
+          else if (d < S * 0.55) { e.cd = 2000; e.parry = true; e.tele = { t: 0, dur: 620, kind: "raise", fire: function () { e.parry = false; hazards.push({ type: "arc", x: e.x, y: e.y, ang: Math.atan2(p.y - e.y, p.x - e.x), t: 0, dur: 350, r: S * 0.4, dmg: 4 }); if (e.hp < e.hpMax * 0.5) hazards.push({ type: "arc", x: e.x, y: e.y, ang: Math.atan2(p.y - e.y, p.x - e.x) + Math.PI, t: 0, dur: 350, r: S * 0.4, dmg: 4 }); A().tone(500, 0.15, { type: "sawtooth", vol: 0.07, glide: 200 }); } }; }
         }
       }
       function spawnEnemyAt(kind, x, y, biome) { spawnEnemy(kind, x, y, biome, -1); return enemies[enemies.length - 1]; }
@@ -560,7 +560,7 @@
           b.face = p.x < b.x ? -1 : 1;
           if (d < R * 1.5 && b.cd <= 0) { takeHit(2, b.x, b.y); b.cd = 900; }
           b.cd -= dt;
-          if (b.pt > (lowHp < 0.5 ? 1100 : 1700)) {
+          if (b.pt > (lowHp < 0.5 ? 800 : 1400)) {
             const guards = enemies.filter(function (e) { return e.spawned && !e.dead && e.kind === "guard"; }).length;
             const pick = Math.random();
             if (lowHp < 0.6 && guards === 0 && pick < 0.2) b.phase = "summon";
@@ -572,13 +572,13 @@
           }
         } else if (ph === "slamTele") { b.sq = 0.6; b.weak = null; if (b.pt > 650) { b.phase = "slamAir"; b.pt = 0; b.jx = p.x; b.jy = p.y; b.x0 = b.x; b.y0 = b.y; A().tone(200, 0.3, { type: "triangle", vol: 0.08, glide: 700 }); } }
         else if (ph === "slamAir") { const k = Math.min(1, b.pt / 700); b.x = lerp(b.x0, b.jx, k); b.y = lerp(b.y0, b.jy, k); b.z = Math.sin(k * Math.PI) * 2.2; if (k >= 1) { b.z = 0; b.phase = "stun"; b.pt = 0; b.weak = "crown"; ring(b.x, b.y, 3, S * 0.0005); if (lowHp < 0.5) setTimeout(function () { if (boss) ring(b.x, b.y, 3, S * 0.0005); }, 500); fx.push({ kind: "txt", x: b.x, y: b.y - R * 2, t: 0, dur: 1200, text: "DIZZY — hit the crown!", col: "#ffd36b" }); } }
-        else if (ph === "stun") { if (b.pt > 2200) { b.phase = "chase"; b.pt = 0; b.weak = null; } }
+        else if (ph === "stun") { if (b.pt > (lowHp < 0.5 ? 1300 : 1700)) { b.phase = "chase"; b.pt = 0; b.weak = null; } }
         else if (ph === "inhale") { b.weak = "belly"; b.sq = 0.3; if (b.pt === dt) fx.push({ kind: "txt", x: b.x, y: b.y - R * 2, t: 0, dur: 1100, text: "inhaling — hit the belly!", col: "#ffd36b" }); if (b.pt > 1300) { b.phase = "spit"; b.pt = 0; b.weak = null; const n = lowHp < 0.5 ? 7 : 5, base = Math.atan2(p.y - b.y, p.x - b.x); for (let k = 0; k < n; k++) { const a = base + (k - (n - 1) / 2) * 0.22; hazards.push({ type: "spit", x: b.x, y: b.y, vx: Math.cos(a) * S * 0.00045, vy: Math.sin(a) * S * 0.00045, life: 1, dur: 2600, t: 0, dmg: 2 }); } A().tone(400, 0.25, { type: "sawtooth", vol: 0.08, glide: 150 }); } }
         else if (ph === "spit") { if (b.pt > 500) { b.phase = "chase"; b.pt = 0; } }
         else if (ph === "quakeTele") { b.sq = 0.5; if (b.pt > 700) { b.phase = "chase"; b.pt = 0; shake = 14; sndQuake(); for (let k = 0; k < (lowHp < 0.5 ? 8 : 6); k++) { const a = Math.random() * TAU, rr2 = Math.random() * S * 0.35; hazards.push({ type: "rock", x: p.x + Math.cos(a) * rr2, y: p.y + Math.sin(a) * rr2, t: 0, dur: 1000 + k * 120, r: S * 0.075, dmg: 2 }); } } }
         else if (ph === "chargeTele") { b.face = p.x < b.x ? -1 : 1; if (b.pt > 600) { b.phase = "charge"; b.pt = 0; b.cvx = (p.x - b.x) / d * S * 0.0013; b.cvy = (p.y - b.y) / d * S * 0.0013; } }
         else if (ph === "charge") { b.x += b.cvx * dt; b.y += b.cvy * dt; b.x = clamp(b.x, gateX(4) + R, W - R); b.y = clamp(b.y, R, H - R); if (d < R * 1.5 && b.cd <= 0) { takeHit(3, b.x, b.y); b.cd = 900; } b.cd -= dt; if (b.pt > 700) { b.phase = "dizzy"; b.pt = 0; b.weak = "back"; fx.push({ kind: "txt", x: b.x, y: b.y - R * 2, t: 0, dur: 1200, text: "off balance — hit his back!", col: "#ffd36b" }); } }
-        else if (ph === "dizzy") { if (b.pt > 1800) { b.phase = "chase"; b.pt = 0; b.weak = null; } }
+        else if (ph === "dizzy") { if (b.pt > (lowHp < 0.5 ? 1100 : 1500)) { b.phase = "chase"; b.pt = 0; b.weak = null; } }
         else if (ph === "summon") { if (b.pt > 800) { b.phase = "chase"; b.pt = 0; for (let k = -1; k <= 1; k += 2) { const e = spawnEnemyAt("guard", b.x + k * S * 0.25, b.y + S * 0.1, 4); e.spawned = true; } shake = 8; sndQuake(); toast("The King calls his guards!", "#ff8fa3"); } }
         b.x = clamp(b.x, gateX(4) + R, W - R); b.y = clamp(b.y, R, H - R);
       }
