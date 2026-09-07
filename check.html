@@ -24,11 +24,12 @@
 <div class="card"><b>Games registered</b><div id="games"></div></div>
 <div class="card"><b>Runtime errors</b><div id="errs">none yet</div></div>
 <div class="card"><b>Speed</b><div id="speed">measuring…</div></div>
+<div class="card"><b>Kids hub live test</b> <small>(opens the real arcade below, counts cards, checks each picture drew, launches every kid game for a second and measures its fps)</small><div id="kidtest">waiting for scripts…</div><iframe id="arc" style="width:100%;height:420px;border:1px solid #333;border-radius:10px;background:#000"></iframe></div>
 <div class="card"><b>Copy this to George's Claude</b><br><textarea id="report" readonly></textarea><br><button onclick="copyReport()">Copy report</button></div>
 
 <script>
 (function () {
-  const out = { ua: navigator.userAgent, loaded: [], failed: [], errors: [], games: [], kid: [], fps: null, draw: null };
+  const out = { ua: navigator.userAgent, screen: screen.width + "x" + screen.height + " dpr" + (window.devicePixelRatio || 1) + " win" + innerWidth + "x" + innerHeight, loaded: [], failed: [], errors: [], games: [], kid: [], fps: null, draw: null, kidhub: null };
   const $ = (id) => document.getElementById(id);
   $("ua").textContent = navigator.userAgent + " · " + screen.width + "×" + screen.height + " · dpr " + (window.devicePixelRatio || 1) + " · cores " + (navigator.hardwareConcurrency || "?") + " · touch " + (navigator.maxTouchPoints || 0);
   window.addEventListener("error", function (e) { out.errors.push((e.filename || "").split("/").pop() + ":" + e.lineno + " " + e.message); render(); });
@@ -50,7 +51,7 @@
     const srcs = []; const re = /<script src="([^"]+)"><\/script>/g; let m; while ((m = re.exec(html))) srcs.push(m[1]);
     let i = 0;
     function next() {
-      if (i >= srcs.length) { render(); bench(); return; }
+      if (i >= srcs.length) { render(); bench(); kidTest(); return; }
       const src = srcs[i++]; const s = document.createElement("script"); s.src = src;
       s.onload = function () { out.loaded.push(src); render(); next(); };
       s.onerror = function () { out.failed.push(src + " (did not load)"); render(); next(); };
@@ -58,6 +59,38 @@
     }
     next();
   }).catch((e) => { $("scripts").innerHTML = "<span class='bad'>could not fetch index.html: " + e + "</span>"; bench(); });
+
+  // 3) the real arcade in an iframe: kid hub cards, icon pixels, launch each kid game, fps
+  function kidTest() {
+    const fr = $("arc"), rep = { cards: 0, blankIcons: [], launch: {}, errors: [] };
+    const say = (t) => { $("kidtest").innerHTML = t; };
+    fr.onload = function () {
+      const w = fr.contentWindow, d = fr.contentDocument;
+      w.addEventListener("error", function (e) { rep.errors.push((e.filename || "").split("/").pop() + ":" + e.lineno + " " + e.message); });
+      setTimeout(async function () {
+        try {
+          const cards = Array.from(d.querySelectorAll(".kid-card")); rep.cards = cards.length;
+          cards.forEach(function (c) { const cv = c.querySelector("canvas"); const lab = (c.querySelector(".kid-label") || {}).textContent || "?"; try { const g = cv.getContext("2d"); const px = g.getImageData(0, 0, cv.width, cv.height).data; let any = false; for (let k = 3; k < px.length; k += 40) { if (px[k] > 0) { any = true; break; } } if (!any) rep.blankIcons.push(lab); } catch (e) { rep.blankIcons.push(lab + " (" + e.message + ")"); } });
+          say("cards: " + rep.cards + " · blank pictures: " + (rep.blankIcons.length ? "<span class='bad'>" + rep.blankIcons.join(", ") + "</span>" : "<span class='ok'>none</span>") + "<br>launching each kid game…");
+          const kids = w.Arcade.games.filter(function (g) { return g.kid || g.kidOpts; });
+          for (const g of kids) {
+            const before = rep.errors.length; let frames = 0, alive = true; const cnt = function () { frames++; if (alive) w.requestAnimationFrame(cnt); };
+            try { w.Arcade.shell.launch(g.id, g.kidOpts || {}); } catch (e) { rep.errors.push(g.id + " launch: " + e.message); }
+            w.requestAnimationFrame(cnt);
+            await new Promise(function (r) { setTimeout(r, 1000); }); alive = false;
+            const hasCanvas = !!d.querySelector("#stage canvas, #stage .board, #stage > *");
+            rep.launch[g.id] = { fps: frames, mounted: hasCanvas, errors: rep.errors.length - before };
+            try { w.Arcade.shell.toHub(); } catch (e) {}
+            await new Promise(function (r) { setTimeout(r, 150); });
+            say("cards: " + rep.cards + " · blank pictures: " + (rep.blankIcons.length ? rep.blankIcons.join(", ") : "none") + "<br>" + Object.keys(rep.launch).map(function (id) { const L = rep.launch[id]; return (L.mounted && !L.errors ? "<span class='ok'>" : "<span class='bad'>") + id + " " + L.fps + "fps" + (L.errors ? " ERR" : "") + (L.mounted ? "" : " no-mount") + "</span>"; }).join(" · "));
+          }
+          if (rep.errors.length) say($("kidtest").innerHTML + "<br><span class='bad'>" + rep.errors.join("<br>") + "</span>");
+        } catch (e) { rep.errors.push("kidtest: " + e.message); say("<span class='bad'>kid test crashed: " + e.message + "</span>"); }
+        out.kidhub = rep; render();
+      }, 1800);
+    };
+    fr.src = "index.html?check=" + Date.now() + "#kids";
+  }
 
   // 2) canvas speed: 3 s of glow-heavy drawing, then plain drawing
   function bench() {
