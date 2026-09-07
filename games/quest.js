@@ -260,7 +260,7 @@
   // every gate guardian has its OWN mechanic (George: "the jumping gets repetitive")
   const MINIBOSS = [
     { kind: "snake", name: "Slither the Long", hp: 45, size: 2.2, dmg: 1, gems: 80, gimmick: "slam", intro: "Slither the Long blocks the gate. When JUMP! appears — click. Any left-click jumps the shockwave." },
-    { kind: "gator", name: "Mawgrim, Elder Gator", hp: 90, size: 2.0, dmg: 2, gems: 110, gimmick: "chomp", intro: "Mawgrim rises. His CHOMP sends a wave in one direction — step out of its line. When the whole pond surges, get OUT of the water." },
+    { kind: "gator", name: "Mawgrim, Elder Gator", hp: 90, size: 2.0, dmg: 2, gems: 110, gimmick: "chomp", intro: "Mawgrim rises in the great river — follow the big red dot on your radar. His CHOMP sends a wave in one direction — step out of its line. When the whole pond surges, get OUT of the water." },
     { kind: "spider", name: "Silka, Spider Queen", hp: 110, size: 2.1, dmg: 2, gems: 140, gimmick: "brood", intro: "Silka is SHIELDED while her brood lives. Squash the spiderlings, then strike the Queen. Don't stand in her webs." },
     { kind: "scorpion", name: "Duneclaw", hp: 140, size: 2.0, dmg: 3, gems: 180, gimmick: "meteor", intro: "Duneclaw calls METEORS. Red circles mark where they land — don't be standing there. Keep moving." },
     { kind: "guard", name: "Sir Croakalot", hp: 220, size: 1.9, dmg: 4, gems: 220, gimmick: "parry", intro: "Sir Croakalot. He RAISES his spear before every swing — strike him during the raise to PARRY and break his guard." }
