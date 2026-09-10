@@ -9,7 +9,7 @@
 (function () {
   const A = (window.Arcade = window.Arcade || {});
   let ws = null, myId = null, myName = null, room = null, url = null, pending = {}, handlers = {}, pingT = null;
-  function defaultUrl() { return (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws"; }
+  function defaultUrl() { if (/github\.io$/.test(location.hostname)) return "wss://play.vaultdigitaltools.com/ws"; return (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws"; }
   function emit(ev, data) { (handlers[ev] || []).forEach(function (fn) { try { fn(data); } catch (e) { console.error(e); } }); }
   function on(ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); return function () { handlers[ev] = (handlers[ev] || []).filter(function (f) { return f !== fn; }); }; }
   function off(ev) { if (ev) delete handlers[ev]; else handlers = {}; }

@@ -279,7 +279,7 @@
       let S = 0, W = 0, H = 0, dpr = 1, reduced = false, now = 0;
       let save, p, cam, prey = [], enemies = [], hazards = [], fx = [], ripples = [], toasts = [], boss = null, mini = null;
       let jumpPrompt = null, house = -1, houseT = 0, talking = null, hostLine = 0;
-      let mp = null, nidSeq = 1, mpMenuMsg = "";   // multiplayer session (null = single player)
+      let mp = null, nidSeq = 1, mpMenuMsg = "", touchDevice = false, press = null;   // multiplayer session (null = single player)
       let scene = "title", cut = null, panel = null, shake = 0, fade = 0, fadeDir = 0, afterFade = null, hopSnd = 0, dirty = false, saveT = 0;
 
       // ---- geometry ----
@@ -721,6 +721,7 @@
         for (let i = fx.length - 1; i >= 0; i--) { const e = fx[i]; e.t += dt; if (e.vx !== undefined) { e.x += e.vx * dt; e.y += e.vy * dt; e.vy += S * 0.0000012 * dt; if (e.rot !== undefined) e.rot += dt * 0.004; } if (e.t > e.dur) fx.splice(i, 1); }
         for (let i = ripples.length - 1; i >= 0; i--) { ripples[i].t += dt; if (ripples[i].t > ripples[i].dur) ripples.splice(i, 1); }
         for (let i = toasts.length - 1; i >= 0; i--) { toasts[i].t += dt; if (toasts[i].t > toasts[i].dur) toasts.splice(i, 1); }
+        if (press && !press.done && now - press.t > 380) { press.done = true; rightClick(press.x, press.y); }
         if (mp) mpTick(dt);
         if (cut) { cut.t += dt; return; }
         if (scene === "house") { updateHouse(dt); return; }
@@ -1365,6 +1366,7 @@
         mount(stage, c) {
           stageEl = stage; ctx = c;
           reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          touchDevice = (navigator.maxTouchPoints || 0) > 0 && !window.matchMedia("(pointer: fine)").matches;
           const wrap = document.createElement("div");
           wrap.style.display = "flex"; wrap.style.flexDirection = "column"; wrap.style.alignItems = "center";
           canvas = document.createElement("canvas");
@@ -1373,7 +1375,7 @@
           g = canvas.getContext("2d");
           wrap.appendChild(canvas);
           const hint = document.createElement("div"); hint.className = "hint";
-          hint.textContent = "Left-click: hop / talk / open. Right-click: tongue. Keys 1 / 2 / 3 drink potions. Campfire = safe. Houses heal you. When JUMP! shows, click.";
+          hint.textContent = touchDevice ? "Tap: hop / talk / open. HOLD a spot: tongue. Tap potions to drink. Campfire = safe. Houses heal you. When JUMP! shows, tap." : "Left-click: hop / talk / open. Right-click: tongue. Keys 1 / 2 / 3 drink potions. Campfire = safe. Houses heal you. When JUMP! shows, click.";
           wrap.appendChild(hint);
           stage.appendChild(wrap);
           ctxMenu = function (e) { e.preventDefault(); }; canvas.addEventListener("contextmenu", ctxMenu);
@@ -1390,9 +1392,17 @@
           draw();
         },
         handleInput(intent) {
-          if (intent.type !== "point" || intent.phase !== "down") return;
-          if (intent.button === 2) rightClick(intent.x, intent.y);
-          else if (intent.button === 0) leftClick(intent.x, intent.y);
+          if (intent.type !== "point") return;
+          if (intent.phase === "down" && intent.button === 2) { press = null; rightClick(intent.x, intent.y); return; }
+          if (intent.button !== 0) return;
+          if (intent.phase === "down") {
+            if (!touchDevice || scene !== "world") { leftClick(intent.x, intent.y); return; }
+            press = { x: intent.x, y: intent.y, t: now, done: false };     // touch in the world: decide on release / hold
+          } else if (intent.phase === "move" && press && !press.done) {
+            if (Math.hypot(intent.x - press.x, intent.y - press.y) > S * 0.04) { const pr = press; press = null; leftClick(pr.x, pr.y); }   // a drag = just move there
+          } else if (intent.phase === "up" && press) {
+            const pr = press; press = null; if (!pr.done) leftClick(pr.x, pr.y);
+          }
         },
         tick(dt) { update(Math.min(50, dt)); draw(); },
         getScore() { return save ? save.total : 0; },

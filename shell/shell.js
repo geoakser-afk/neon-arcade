@@ -506,7 +506,8 @@
           title: opts.title || "Round over.",
           msg: (opts.msg || (def.scoreLabel + ": " + (finalScore || 0))) +
                (isBest ? "  — new best!" : ""),
-          allowReplay: true
+          allowReplay: true,
+          board: opts.board === false ? null : { id: def.id, score: finalScore || 0, label: def.scoreLabel }
         });
       },
       // let a game offer a per-game fuse start (optional)
@@ -531,10 +532,31 @@
     const hubBtn = el("button", "btn ghost", "Back to arcade");
     hubBtn.onclick = () => { ov.root.remove(); toHub(); };
     if (!timer.isLocked()) { row.appendChild(hubBtn); wrap.appendChild(row); }
+    if (opts.board && A.cloud) wrap.appendChild(leaderboardPanel(opts.board.id, opts.board.score, opts.board.label));
     ov.root.appendChild(wrap);
     ov.show();
     audio.gameOver();
   }
+  // global top-10 for a board (+ submits your score when signed in). Guests see the board and a sign-in nudge.
+  function leaderboardPanel(boardId, score, label, lower) {
+    const box = el("div", "lb");
+    box.appendChild(el("div", "lb-title", "🏆 Global top 10 · " + (label || "score")));
+    const list = el("ol", "lb-list"); box.appendChild(list);
+    const foot = el("div", "lb-foot", A.cloud.enabled() ? "submitting…" : "Sign in to post your score");
+    box.appendChild(foot);
+    const me = A.auth && A.auth.user();
+    const render = (top, mine) => {
+      list.innerHTML = "";
+      if (!top || !top.length) list.appendChild(el("li", "lb-empty", "No scores yet — be the first."));
+      (top || []).slice(0, 10).forEach((r) => { const li = el("li", "lb-row" + (me && r.name === me.name ? " me" : "")); li.innerHTML = "<span>" + String(r.name).replace(/[<>&]/g, "") + "</span><b>" + r.score + "</b>"; list.appendChild(li); });
+      if (mine && mine.rank) foot.textContent = "You: #" + mine.rank + " · best " + mine.best;
+    };
+    const name = boardId + (lower ? ":low" : "");
+    const p = (A.cloud.enabled() && score != null) ? A.cloud.submit(name, score).then((r) => { if (r && r.top) render(r.top, r); else return A.cloud.board(name).then((t) => render(t)); }) : A.cloud.board(name).then((t) => render(t));
+    p.catch(() => { foot.textContent = "leaderboard unavailable"; });
+    return box;
+  }
+  A.leaderboardPanel = leaderboardPanel;
 
   function lockArcade() {
     stopRaf();

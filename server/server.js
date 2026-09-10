@@ -21,11 +21,16 @@ const http = require("http");
 const https = require("https");
 const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
+const fs = require("fs");
+const path = require("path");
 
 const PORT = +process.env.PORT || 8787;
 const JWKS_URL = process.env.CLERK_JWKS_URL || "https://pro-elephant-6619.clerk.accounts.dev/.well-known/jwks.json";
 const ALLOW_GUEST = process.env.ALLOW_GUEST === "1";
 const MAX_PLAYERS = 6, MAX_MSG_BYTES = 8192, MSGS_PER_SEC = 40, CONNS_PER_IP = 8, IDLE_MS = 90000;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+const MAX_SAVE_BYTES = 256 * 1024;   // per user cloud save blob
+try { fs.mkdirSync(path.join(DATA_DIR, "saves"), { recursive: true }); } catch (e) {}
 
 // ---- Clerk JWT verification via JWKS (RS256) ----
 let jwks = { keys: [], fetched: 0 };
@@ -82,9 +87,62 @@ function leaveRoom(c, why) {
   broadcastRoom(r);
 }
 
-const server = http.createServer((req, res) => {
-  if (req.url === "/ws/health" || req.url === "/health") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: true, rooms: rooms.size, clients: clients.size, uptime: Math.round(process.uptime()) })); return; }
-  res.writeHead(404); res.end();
+// ---- cloud saves: one JSON blob per user, per-key last-write-wins on timestamps ----
+function safeId(id) { return String(id || "").replace(/[^A-Za-z0-9_\-]/g, "").slice(0, 80); }
+function savePath(uid) { return path.join(DATA_DIR, "saves", safeId(uid) + ".json"); }
+function readSave(uid) { try { return JSON.parse(fs.readFileSync(savePath(uid), "utf8")); } catch (e) { return { data: {}, ts: {}, name: null }; } }
+function writeJsonAtomic(file, obj) { const tmp = file + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, file); }
+function mergeSave(cur, inc) {   // inc: { data:{key:value}, ts:{key:ms} }
+  cur.data = cur.data || {}; cur.ts = cur.ts || {};
+  Object.keys(inc.data || {}).forEach((k) => { const t = +(inc.ts && inc.ts[k]) || 0; if (!(k in cur.data) || t >= (+cur.ts[k] || 0)) { cur.data[k] = inc.data[k]; cur.ts[k] = t; } });
+  return cur;
+}
+// ---- leaderboards: best per user per board; lower-is-better boards end with ":low" ----
+const boardsFile = path.join(DATA_DIR, "boards.json");
+let boards = {}; try { boards = JSON.parse(fs.readFileSync(boardsFile, "utf8")); } catch (e) { boards = {}; }
+let boardsDirty = false; setInterval(() => { if (boardsDirty) { boardsDirty = false; try { writeJsonAtomic(boardsFile, boards); } catch (e) {} } }, 3000);
+function boardTop(name, limit) { const b = boards[name] || {}; const low = /:low$/.test(name); return Object.keys(b).map((uid) => Object.assign({ uid: uid.slice(0, 8) }, b[uid])).sort((a, z) => low ? a.score - z.score : z.score - a.score).slice(0, limit || 20); }
+
+function readBody(req, limit) { return new Promise((resolve, reject) => { let body = "", size = 0; req.on("data", (c) => { size += c.length; if (size > limit) { reject(new Error("too big")); req.destroy(); return; } body += c; }); req.on("end", () => resolve(body)); req.on("error", reject); }); }
+const ORIGINS = ["https://play.vaultdigitaltools.com", "https://geoakser-afk.github.io"];
+function cors(req, res) { const o = req.headers.origin; if (o && (ORIGINS.indexOf(o) >= 0 || ALLOW_GUEST)) { res.setHeader("Access-Control-Allow-Origin", o); res.setHeader("Vary", "Origin"); } else if (ALLOW_GUEST && !o) res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type"); res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS"); res.setHeader("Access-Control-Max-Age", "600"); }
+function json(res, code, obj) { res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify(obj)); }
+const httpBucket = new Map();
+function httpAllowed(ip) { const t = Date.now(); const b = httpBucket.get(ip) || { n: 0, t: t }; if (t - b.t > 10000) { b.n = 0; b.t = t; } b.n++; httpBucket.set(ip, b); return b.n <= 60; }
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, "http://x");
+  cors(req, res); if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+  const ip = (req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "?").toString().split(",")[0].trim();
+  if (url.pathname === "/ws/health" || url.pathname === "/health") return json(res, 200, { ok: true, rooms: rooms.size, clients: clients.size, uptime: Math.round(process.uptime()), boards: Object.keys(boards).length });
+  if (!httpAllowed(ip)) return json(res, 429, { error: "slow down" });
+  // public: leaderboard read
+  if (url.pathname === "/ws/board" && req.method === "GET") { const name = String(url.searchParams.get("game") || "").slice(0, 60); if (!name) return json(res, 400, { error: "game?" }); return json(res, 200, { game: name, top: boardTop(name, Math.min(50, +url.searchParams.get("limit") || 20)) }); }
+  // authenticated
+  const auth = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  let claims = auth ? await verifyClerkToken(auth) : null;
+  if (!claims && ALLOW_GUEST && /^guest:/.test(auth)) claims = { sub: "guest_" + safeId(auth.slice(6)) };   // local testing only
+  if (!claims) return json(res, 401, { error: "sign in" });
+  const uid = claims.sub;
+  if (url.pathname === "/ws/save" && req.method === "GET") { return json(res, 200, readSave(uid)); }
+  if (url.pathname === "/ws/save" && (req.method === "PUT" || req.method === "POST")) {
+    let body; try { body = JSON.parse(await readBody(req, MAX_SAVE_BYTES)); } catch (e) { return json(res, 413, { error: "save too big or not JSON" }); }
+    const cur = mergeSave(readSave(uid), body || {}); if (body && body.name) cur.name = cleanName(body.name, cur.name || "Frog"); cur.updated = Date.now();
+    try { writeJsonAtomic(savePath(uid), cur); } catch (e) { return json(res, 500, { error: "could not write" }); }
+    return json(res, 200, { ok: true, keys: Object.keys(cur.data).length, ts: cur.ts });
+  }
+  if (url.pathname === "/ws/score" && req.method === "POST") {
+    let body; try { body = JSON.parse(await readBody(req, 4096)); } catch (e) { return json(res, 400, { error: "bad json" }); }
+    const name = String(body.game || "").replace(/[^a-z0-9:_\-]/gi, "").slice(0, 60), score = +body.score;
+    if (!name || !isFinite(score) || score < 0 || score > 1e9) return json(res, 400, { error: "bad score" });
+    const low = /:low$/.test(name); boards[name] = boards[name] || {};
+    const prev = boards[name][uid];
+    if (!prev || (low ? score < prev.score : score > prev.score)) { boards[name][uid] = { name: cleanName(body.name, "Frog"), score: Math.round(score * 100) / 100, when: Date.now() }; boardsDirty = true; }
+    else if (prev && body.name && prev.name !== cleanName(body.name, prev.name)) { prev.name = cleanName(body.name, prev.name); boardsDirty = true; }
+    const top = boardTop(name, 20); const rank = Object.keys(boards[name]).map((u) => ({ u, s: boards[name][u].score })).sort((a, z) => low ? a.s - z.s : z.s - a.s).findIndex((r) => r.u === uid) + 1;
+    return json(res, 200, { ok: true, best: boards[name][uid].score, rank: rank, top: top, improved: !prev || boards[name][uid].when === (boards[name][uid] || {}).when && (!prev || (low ? score < prev.score : score > prev.score)) });
+  }
+  json(res, 404, { error: "not found" });
 });
 const wss = new WebSocketServer({ server, path: "/ws", maxPayload: MAX_MSG_BYTES });
 

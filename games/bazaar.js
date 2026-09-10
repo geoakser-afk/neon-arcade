@@ -1260,6 +1260,8 @@
       function drawTrade() {
         const c = contentRect();
         let y = c.y;
+        // friends: real player-to-player trading (needs sign-in) — opens the DOM trade table
+        { const bw = Math.min(S * 0.3, c.w * 0.36), bh = S * 0.044; button(c.x + c.w - bw, S * 0.985 - bh - S * 0.005, bw, bh, "👥 Trade with a friend", function () { p2pOpen(); }); }
         const lvl = level();
         // trader chips
         const chipW = c.w / TRADERS.length, chipH = S * 0.085;
@@ -2368,6 +2370,109 @@
         if (screen === "playground" && pg && !modal) pgPointer("down", x, y);
       }
 
+      // ================= P2P TRADING (Arcade.mpLobby + Arcade.net) =================
+      // Two modes: "dock" — both players pile toys on a shared table, can ask the other to add more, accept/reject;
+      // "blind" — Blind Bag swap: you fill a bag the other can't see (only the count + how many are Rare+ sparkle),
+      // both lock, bags are revealed and swapped. Items travel as item ids (uids are per-owner). Locked toys stay home.
+      let p2p = null, p2pEl = null;
+      function p2pOpen() {
+        if (!window.Arcade || !Arcade.mpLobby) return;
+        Arcade.mpLobby.open({ title: "Squishy Bazaar — trade with a friend", modes: [{ id: "dock", label: "Trading dock" }, { id: "blind", label: "Blind bag swap" }], minPlayers: 2, onStart: p2pStart, onMsg: p2pMsg, onLeave: p2pClose, onPeer: function (q, what) { if (p2p && what === "leave" && q.id === p2p.partner.id) { toast(q.name + " left the trade.", "#ff9fb0"); p2pClose(); } } });
+      }
+      function p2pStart(info) {
+        const others = Arcade.mpLobby.players().filter(function (q) { return q.id !== info.me.id; });
+        if (!others.length) { toast("Trading needs a friend in the room.", "#ff9fb0"); Arcade.mpLobby.leave(); return; }
+        p2p = { mode: info.mode, me: info.me, partner: others[0], mine: [], theirs: [], theirsN: 0, theirsRare: 0, myAcc: false, theirAcc: false, myLock: false, theirLock: false, done: false, revealed: null, nudge: 0 };
+        p2pRender();
+      }
+      function p2pClose() { p2p = null; if (p2pEl) { p2pEl.remove(); p2pEl = null; } try { Arcade.mpLobby.close(); } catch (e) {} }
+      function p2pSend(d) { Arcade.mpLobby.to(p2p.partner.id, d); }
+      function p2pIds(uids) { return uids.map(function (u) { const x = inst(u); return x ? x.id : null; }).filter(Boolean); }
+      function p2pResetAccepts() { p2p.myAcc = false; p2p.theirAcc = false; }
+      function p2pToggle(uid) {
+        if (p2p.done || (p2p.mode === "blind" && p2p.myLock)) return;
+        const i = p2p.mine.indexOf(uid); if (i >= 0) p2p.mine.splice(i, 1); else p2p.mine.push(uid);
+        p2pResetAccepts(); sndClick();
+        if (p2p.mode === "dock") p2pSend({ k: "dock", ids: p2pIds(p2p.mine) });
+        else { const ids = p2pIds(p2p.mine); p2pSend({ k: "bag", n: ids.length, rare: ids.filter(function (id) { return RI[ITEM[id].rar] >= RI.rare; }).length }); }
+        p2pRender();
+      }
+      function p2pAccept() {
+        if (p2p.done) return;
+        if (save.inv.length - p2p.mine.length + p2p.theirs.length > INV_MAX) { toast("Collection full — sell something first", "#ff9fb0"); sndNo(); return; }
+        if (!p2p.mine.length && !p2p.theirs.length) { toast("Put something on the table first", "#ff9fb0"); sndNo(); return; }
+        p2p.myAcc = true; sndClick(); p2pSend({ k: "acc", ids: p2pIds(p2p.mine) }); p2pRender(); p2pMaybeSwap();
+      }
+      function p2pReject() { if (p2p.done) return; p2pResetAccepts(); sndNo(); p2pSend({ k: "rej" }); toast("Trade reset. Change the table and try again.", "#e6ecf5"); p2pRender(); }
+      function p2pNudge() { if (p2p.done) return; sndClick(); p2pSend({ k: "nudge" }); toast("You asked " + p2p.partner.name + " to add more.", "#ffd36b"); }
+      function p2pLock() {
+        if (p2p.done || p2p.myLock) return;
+        if (!p2p.mine.length) { toast("Put at least one toy in your bag", "#ff9fb0"); sndNo(); return; }
+        p2p.myLock = true; sndClick(); p2pSend({ k: "lock", ids: p2pIds(p2p.mine) }); p2pRender(); p2pMaybeSwap();
+      }
+      function p2pMaybeSwap() {
+        if (!p2p || p2p.done) return;
+        const ready = p2p.mode === "dock" ? (p2p.myAcc && p2p.theirAcc) : (p2p.myLock && p2p.theirLock && p2p.theirs.length);
+        if (!ready) return;
+        if (save.inv.length - p2p.mine.length + p2p.theirs.length > INV_MAX) { toast("Collection full — trade cancelled", "#ff9fb0"); p2pResetAccepts(); p2pSend({ k: "rej" }); p2pRender(); return; }
+        p2p.done = true; p2p.revealed = p2p.theirs.slice();
+        const gave = p2p.mine.slice(); gave.forEach(function (u) { removeItem(u); });
+        p2p.theirs.forEach(function (id) { if (ITEM[id]) giveItem(id); });
+        persist(); refreshScore();
+        for (let i = 0; i < 40; i++) confetti.push({ x: Math.random() * S, y: -S * 0.02, vx: (Math.random() - 0.5) * S * 0.0002, vy: S * (0.0002 + Math.random() * 0.0003), life: 1, r: S * (0.006 + Math.random() * 0.008), col: ["#ffd36b", "#ff8fd0", "#74b9ff", "#7fe0a0"][i % 4] });
+        ctx.audio.arp([523, 659, 784, 1046], { dur: 0.16, step: 0.08, vol: 0.12, type: "triangle" });
+        toast("Traded " + gave.length + " for " + p2p.theirs.length + " with " + p2p.partner.name + "!", "#ffd36b");
+        p2pRender();
+      }
+      function p2pMsg(m) {
+        if (!p2p || m.from !== p2p.partner.id) return; const d = m.d || {};
+        if (d.k === "dock") { p2p.theirs = (d.ids || []).filter(function (id) { return ITEM[id]; }); p2pResetAccepts(); }
+        else if (d.k === "acc") { p2p.theirs = (d.ids || []).filter(function (id) { return ITEM[id]; }); p2p.theirAcc = true; p2pMaybeSwap(); }
+        else if (d.k === "rej") { p2pResetAccepts(); toast(p2p.partner.name + " reset the trade.", "#e6ecf5"); }
+        else if (d.k === "nudge") { p2p.nudge = now; toast(p2p.partner.name + " wants you to add more!", "#ffd36b"); ctx.audio.tone(660, 0.1, { type: "sine", vol: 0.08, glide: 880 }); }
+        else if (d.k === "bag") { p2p.theirsN = d.n || 0; p2p.theirsRare = d.rare || 0; }
+        else if (d.k === "lock") { p2p.theirs = (d.ids || []).filter(function (id) { return ITEM[id]; }); p2p.theirLock = true; p2p.theirsN = p2p.theirs.length; p2pMaybeSwap(); }
+        else if (d.k === "again") { p2pAgain(false); }
+        p2pRender();
+      }
+      function p2pAgain(tell) { if (!p2p) return; if (tell) p2pSend({ k: "again" }); p2p.mine = []; p2p.theirs = []; p2p.theirsN = 0; p2p.theirsRare = 0; p2p.myAcc = p2p.theirAcc = p2p.myLock = p2p.theirLock = false; p2p.done = false; p2p.revealed = null; p2pRender(); }
+      function toyThumb(id, size, hidden) {
+        const c = document.createElement("canvas"); const dpr = window.devicePixelRatio || 1; c.width = c.height = Math.round(size * dpr); c.style.width = c.style.height = size + "px";
+        const gg = c.getContext("2d"); gg.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (hidden) { gg.fillStyle = "rgba(255,255,255,0.08)"; gg.beginPath(); gg.arc(size / 2, size / 2, size * 0.36, 0, TAU); gg.fill(); gg.fillStyle = "rgba(230,236,245,0.6)"; gg.font = "800 " + Math.round(size * 0.5) + "px system-ui"; gg.textAlign = "center"; gg.textBaseline = "middle"; gg.fillText("?", size / 2, size / 2 + 1); return c; }
+        const save_g = g; g = gg; try { drawToy(size / 2, size / 2, size * 0.34, ITEM[id], { t: now }); } catch (e) {} g = save_g;
+        c.title = ITEM[id].name + " · " + rarOf(ITEM[id]).label; return c;
+      }
+      function p2pRender() {
+        if (!p2p) return;
+        if (!p2pEl) { p2pEl = document.createElement("div"); p2pEl.className = "bz-trade"; document.body.appendChild(p2pEl); }
+        const el = function (tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+        p2pEl.innerHTML = "";
+        const card = el("div", "bz-card");
+        const head = el("div", "bz-head"); head.appendChild(el("b", null, (p2p.mode === "dock" ? "Trading dock" : "Blind bag swap") + " · with " + p2p.partner.name)); const x = el("button", "bz-x", "✕"); x.onclick = function () { Arcade.mpLobby.leave(); p2pClose(); }; head.appendChild(x); card.appendChild(head);
+        const table = el("div", "bz-table");
+        // partner side
+        const ts = el("div", "bz-side theirs"); ts.appendChild(el("div", "bz-lbl", p2p.partner.name + (p2p.mode === "dock" ? (p2p.theirAcc ? "  ✓ accepted" : "  …") : (p2p.theirLock ? "  🔒 locked" : "  …"))));
+        const tg = el("div", "bz-grid");
+        if (p2p.mode === "dock" || p2p.done) { p2p.theirs.forEach(function (id) { tg.appendChild(toyThumb(id, 56)); }); if (!p2p.theirs.length) tg.appendChild(el("div", "bz-empty", "nothing yet")); }
+        else { for (let i = 0; i < p2p.theirsN; i++) tg.appendChild(toyThumb(null, 56, true)); if (!p2p.theirsN) tg.appendChild(el("div", "bz-empty", "empty bag")); if (p2p.theirsRare) tg.appendChild(el("div", "bz-hint", "✦ " + p2p.theirsRare + " Rare+ inside")); }
+        ts.appendChild(tg); table.appendChild(ts);
+        // my side
+        const ms = el("div", "bz-side mine"); ms.appendChild(el("div", "bz-lbl", "You" + (p2p.mode === "dock" ? (p2p.myAcc ? "  ✓ accepted" : "") : (p2p.myLock ? "  🔒 locked" : ""))));
+        const mg = el("div", "bz-grid"); p2p.mine.forEach(function (u) { const x2 = inst(u); if (!x2) return; const t = toyThumb(x2.id, 56); t.onclick = function () { p2pToggle(u); }; mg.appendChild(t); }); if (!p2p.mine.length) mg.appendChild(el("div", "bz-empty", p2p.mode === "dock" ? "tap toys below to place them" : "tap toys below to bag them"));
+        ms.appendChild(mg); table.appendChild(ms); card.appendChild(table);
+        // controls
+        const ctr = el("div", "bz-ctr");
+        if (p2p.done) { ctr.appendChild(el("div", "bz-done", "✓ Traded! " + p2p.theirs.length + " new toy" + (p2p.theirs.length === 1 ? "" : "s") + " in your collection.")); const ag = el("button", "btn", "Trade again"); ag.onclick = function () { p2pAgain(true); }; ctr.appendChild(ag); const dn = el("button", "btn ghost", "Done"); dn.onclick = function () { Arcade.mpLobby.leave(); p2pClose(); }; ctr.appendChild(dn); }
+        else if (p2p.mode === "dock") { const ok = el("button", "btn bz-ok", p2p.myAcc ? "✓ Accepted" : "✓ Accept"); ok.disabled = p2p.myAcc; ok.onclick = p2pAccept; const plus = el("button", "btn ghost bz-plus", "+ Ask for more"); plus.onclick = p2pNudge; const no = el("button", "btn ghost bz-no", "✗ Reject"); no.onclick = p2pReject; ctr.appendChild(ok); ctr.appendChild(plus); ctr.appendChild(no); }
+        else { const lk = el("button", "btn bz-ok", p2p.myLock ? "🔒 Locked — waiting" : "🔒 Lock my bag"); lk.disabled = p2p.myLock; lk.onclick = p2pLock; const plus = el("button", "btn ghost bz-plus", "+ Ask for more"); plus.onclick = p2pNudge; ctr.appendChild(lk); ctr.appendChild(plus); ctr.appendChild(el("div", "bz-sub", "They only see how many toys you bagged and how many are Rare+.")); }
+        card.appendChild(ctr);
+        // inventory (not on the table, not locked)
+        if (!p2p.done && !(p2p.mode === "blind" && p2p.myLock)) { const inv = el("div", "bz-inv"); inv.appendChild(el("div", "bz-lbl", "Your collection — tap to " + (p2p.mode === "dock" ? "place" : "bag"))); const ig = el("div", "bz-grid"); save.inv.filter(function (x2) { return !x2.lock && p2p.mine.indexOf(x2.u) < 0; }).forEach(function (x2) { const t = toyThumb(x2.id, 48); t.onclick = function () { p2pToggle(x2.u); }; ig.appendChild(t); }); if (!ig.children.length) ig.appendChild(el("div", "bz-empty", "nothing left to offer")); inv.appendChild(ig); card.appendChild(inv); }
+        if (now - p2p.nudge < 1500) card.classList.add("shake");
+        p2pEl.appendChild(card);
+      }
+
       return {
         mount(stage, c) {
           stageEl = stage; ctx = c;
@@ -2423,6 +2528,7 @@
         pause() { persist(); },
         teardown() {
           persist();
+          if (p2p) { try { Arcade.mpLobby.leave(); } catch (e) {} } p2pClose();
           if (unResize) unResize(); unResize = null;
           if (canvas) canvas.style.cursor = "default";
           stageEl = ctx = canvas = g = null;
