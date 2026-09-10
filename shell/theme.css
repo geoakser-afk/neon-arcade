@@ -652,3 +652,11 @@ html.lowfx *, html.lowfx *::before, html.lowfx *::after { box-shadow: none !impo
 html.lowfx .icon-btn.on { border-color: #ffb86b; }
 /* low-FX: hub cards lose their blurred glows too (software compositing is slow) */
 html.lowfx .kid-card, html.lowfx .card { transition: none !important; }
+
+/* ---- account button (Clerk) ---- */
+.acct-btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.06); color: var(--fg, #e6ecf5); font: inherit; font-weight: 700; font-size: 13px; cursor: pointer; }
+.acct-btn:hover { border-color: var(--accent-soft, rgba(127,224,160,0.5)); }
+.acct-btn.on { border-color: rgba(127,224,160,0.45); }
+.acct-btn img { width: 24px; height: 24px; border-radius: 50%; }
+body.kid .acct-btn { display: none !important; }
+@media (max-width: 720px) { .acct-btn span { display: none; } .acct-btn { padding: 0 8px; } }

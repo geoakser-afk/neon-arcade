@@ -279,6 +279,7 @@
       let S = 0, W = 0, H = 0, dpr = 1, reduced = false, now = 0;
       let save, p, cam, prey = [], enemies = [], hazards = [], fx = [], ripples = [], toasts = [], boss = null, mini = null;
       let jumpPrompt = null, house = -1, houseT = 0, talking = null, hostLine = 0;
+      let mp = null, nidSeq = 1, mpMenuMsg = "";   // multiplayer session (null = single player)
       let scene = "title", cut = null, panel = null, shake = 0, fade = 0, fadeDir = 0, afterFade = null, hopSnd = 0, dirty = false, saveT = 0;
 
       // ---- geometry ----
@@ -319,6 +320,10 @@
       function markDirty() { dirty = true; }
       function persist() { if (!p) return; save.x = p.x / W; save.y = p.y / H; ctx.storage.set("save", save); dirty = false; }
       function has(id) { return (save.owned[id] || 0) > 0; }
+      function isPeer() { return !!(mp && mp.mode === "coop" && mp.role === "peer"); }
+      function isHost() { return !!(mp && mp.role === "host"); }
+      function unlockedArr() { return isPeer() ? mp.shared.unlocked : save.unlocked; }
+      function tokensArr() { return isPeer() ? mp.shared.tokens : save.tokens; }
       function count(id) { return save.owned[id] || 0; }
 
       // derived stats
@@ -367,9 +372,9 @@
       }
       function spawnEnemy(kind, x, y, biome, slot) {
         const d = ENEMY_DEF[kind];
-        enemies.push({ kind: kind, def: d, x: x, y: y, hx: x, hy: y, hp: d.hp, hpMax: d.hp, face: 1, t: Math.random() * 1000, hurt: 0, cd: 0, lunge: 0, dead: 0, biome: biome, slot: slot, poison: 0, fire: 0, state: "idle", charge: null, z: 0 });
+        enemies.push({ nid: nidSeq++, kind: kind, def: d, x: x, y: y, hx: x, hy: y, hp: d.hp, hpMax: d.hp, face: 1, t: Math.random() * 1000, hurt: 0, cd: 0, lunge: 0, dead: 0, biome: biome, slot: slot, poison: 0, fire: 0, state: "idle", charge: null, z: 0 });
       }
-      function spawnPrey(kind, x, y) { const d = PREY_DEF[kind]; prey.push({ kind: kind, def: d, x: x, y: y, hx: x, hy: y, ph: Math.random() * TAU, vx: 0, vy: 0, hp: d.hp }); }
+      function spawnPrey(kind, x, y) { const d = PREY_DEF[kind]; prey.push({ nid: nidSeq++, kind: kind, def: d, x: x, y: y, hx: x, hy: y, ph: Math.random() * TAU, vx: 0, vy: 0, hp: d.hp }); }
       function keepPrey(dt) {
         const i = biomeOf(p.x), b = BIOMES[i];
         const here = prey.filter(function (q) { return biomeOf(q.x) === i; }).length;
@@ -389,7 +394,8 @@
         if (p.dead) return;
         x = clamp(x, S * 0.05, W - S * 0.05); y = clamp(y, S * 0.08, H - S * 0.05);
         // locked gates block the way forward
-        for (let i = 0; i < 5; i++) { const gx = gateX(i); if (!save.unlocked[i] && p.x < gx && x > gx - S * 0.14) x = gx - S * 0.14; }
+        if (mp && mp.mode === "pvp") { x = clamp(x, gateX(4) + S * 0.15, W - S * 0.08); y = clamp(y, H * 0.16, H * 0.84); }
+        else for (let i = 0; i < 5; i++) { const gx = gateX(i); if (!unlockedArr()[i] && p.x < gx && x > gx - S * 0.14) x = gx - S * 0.14; }
         p.tx = x; p.ty = y; p.goal = null;
         fx.push({ kind: "mark", x: x, y: y, t: 0, dur: 500 });
       }
@@ -429,10 +435,21 @@
       }
       function resolveTongue() {
         const t = p.tongue, dmg = tongueDmg();
+        if (mp && mp.mode === "pvp") { // tongue duel: the first other frog on the line takes the hit
+          const oy = p.y - frogR() * 0.05, L = Math.hypot(t.tx, t.ty) || 1, ux = t.tx / L, uy = t.ty / L; let best = null, bp = 1e9;
+          Object.keys(mp.players).forEach(function (id) { const q = mp.players[id]; if (q.dead || q.sc !== "world") return; const px = q.x - p.x, py = q.y - oy, proj = px * ux + py * uy, off = Math.abs(px * uy - py * ux); if (proj > 0 && proj < L + S * 0.05 && off < frogR() * 1.4 && proj < bp) { bp = proj; best = id; } });
+          if (best) { Arcade.net.to(best, { k: "pvphit", dmg: dmg, fx: p.x, fy: p.y }); spark(mp.players[best].x, mp.players[best].y, "#ff8fa3", 8); sndHit(); mp.hitsDealt++; }
+          return;
+        }
+        if (isPeer()) { // co-op peer: the host owns the enemies — tell it what we hit
+          t.E.forEach(function (e) { Arcade.net.to(mp.hostId, { k: "hit", nid: e.nid, dmg: dmg, hx: p.x + t.tx, hy: p.y + t.ty }); spark(p.x + t.tx, p.y + t.ty, "#ff8fa3", 4); });
+          t.P.forEach(function (q) { Arcade.net.to(mp.hostId, { k: "eat", nid: q.nid }); const i = prey.indexOf(q); if (i >= 0) prey.splice(i, 1); sndGulp(); p.sq = 1; p.happy = 900; });
+          return;
+        }
         t.E.forEach(function (e) { damageEnemy(e, dmg, p.x + t.tx, p.y + t.ty); });
         t.P.forEach(function (q) { const i = prey.indexOf(q); if (i < 0) return; q.hp -= 1; if (q.hp > 0) { spark(q.x, q.y, "#ffd36b", 4); sndHit(); return; } prey.splice(i, 1); sndGulp(); p.sq = 1; p.happy = 900; addGems(q.def.gems, q.x, q.y); addToken(biomeOf(q.x), q.x, q.y, q.def.tokens || 1); spark(q.x, q.y, "#ffd36b", 8); });
       }
-      function damageEnemy(e, dmg, hx, hy) {
+      function damageEnemy(e, dmg, hx, hy, byId) {
         if (e.dead) return;
         if (e.isBoss) { // weak points only
           const wp = bossWeakPoint();
@@ -445,13 +462,13 @@
         if (has("venom")) e.poison = 3000;
         if (has("fire")) e.fire = 2500;
         fx.push({ kind: "txt", x: e.x, y: e.y - S * 0.06, t: 0, dur: 600, text: "-" + dmg, col: "#ff8fa3" });
-        if (e.hp <= 0) killEnemy(e);
+        if (e.hp <= 0) killEnemy(e, byId);
       }
-      function killEnemy(e) {
+      function killEnemy(e, byId) {
         e.dead = 1; e.deadT = now; spark(e.x, e.y, "#ffd36b", 16); confetti(e.x, e.y);
-        addGems(e.def.gems, e.x, e.y); if (!e.isMini && !e.isBoss) addToken(clamp(e.biome, 0, 4), e.x, e.y, e.def.tokens || 5);
-        if (e.isMini) { mini = null; save.miniDead[e.biome] = true; save.unlocked[e.biome] = true; markDirty(); persist(); sndGate(); toast(e.name + " defeated! The gate is open.", "#ffd36b"); shake = 10; }
-        if (e.isBoss) { boss = null; save.won = true; markDirty(); persist(); setTimeout(function () { if (ctx) startCut(ENDING, function () { toast("You are the Frog King. Long live Pip!", "#ffd36b"); }); }, 900); }
+        if (byId && mp && byId !== Arcade.net.id()) Arcade.net.to(byId, { k: "award", gems: e.def.gems, x: e.x, y: e.y, txt: e.name ? e.name + " defeated!" : null }); else addGems(e.def.gems, e.x, e.y); if (!e.isMini && !e.isBoss) addToken(clamp(e.biome, 0, 4), e.x, e.y, e.def.tokens || 5);
+        if (e.isMini) { mini = null; save.miniDead[e.biome] = true; save.unlocked[e.biome] = true; markDirty(); persist(); sndGate(); toast(e.name + " defeated! The gate is open.", "#ffd36b"); shake = 10; mpEvent({ type: "toast", text: e.name + " defeated! The gate is open.", col: "#ffd36b" }); }
+        if (e.isBoss) { boss = null; save.won = true; markDirty(); persist(); mpEvent({ type: "cut", which: "ending" }); setTimeout(function () { if (ctx) startCut(ENDING, function () { toast("You are the Frog King. Long live Pip!", "#ffd36b"); }); }, 900); }
         if (e.spawned) { const i = enemies.indexOf(e); if (i >= 0) enemies.splice(i, 1); }
       }
       function takeHit(dmg, fromX, fromY) {
@@ -466,6 +483,7 @@
         if (p.hp <= 0) die();
       }
       function die() {
+        if (mpDied()) return;
         p.dead = true; p.hp = 0; A().tone(200, 0.5, { type: "sawtooth", vol: 0.1, glide: 60 });
         fadeDir = 1; afterFade = function () {
           const i = biomeOf(p.x), c = campPos(i);
@@ -500,8 +518,8 @@
         const m = MINIBOSS[i], d = Object.assign({}, ENEMY_DEF[m.kind], { hp: m.hp, size: m.size, dmg: m.dmg, gems: m.gems, r: ENEMY_DEF[m.kind].r * 1.2, aggro: 9, leash: 9 });
         let x = gateX(i) - S * 0.6, y = H * 0.5;
         if (m.gimmick === "chomp") { const q = BIOMES[1].ponds[0]; x = (1 + q[0]) * bw(); y = q[1] * H; }
-        enemies.push(mini = { kind: m.kind, def: d, x: x, y: y, hx: x, hy: y, hp: m.hp, hpMax: m.hp, face: -1, t: 0, hurt: 0, cd: 2500, lunge: 0, dead: 0, biome: i, slot: -1, poison: 0, fire: 0, state: "chase", isMini: true, name: m.name, gimmick: m.gimmick, shield: 0, z: 0, atk: null });
-        shake = 14; sndQuake(); toast(m.intro, "#ff8fa3");
+        enemies.push(mini = { nid: nidSeq++, kind: m.kind, def: d, x: x, y: y, hx: x, hy: y, hp: m.hp, hpMax: m.hp, face: -1, t: 0, hurt: 0, cd: 2500, lunge: 0, dead: 0, biome: i, slot: -1, poison: 0, fire: 0, state: "chase", isMini: true, name: m.name, gimmick: m.gimmick, shield: 0, z: 0, atk: null });
+        shake = 14; sndQuake(); toast(m.intro, "#ff8fa3"); mpEvent({ type: "toast", text: m.intro, col: "#ff8fa3" }); mpEvent({ type: "shake", n: 14 });
         for (let k = 0; k < 20; k++) spark(x + (Math.random() - 0.5) * S * 0.4, y + (Math.random() - 0.5) * S * 0.3, "#b8b2cc", 3);
       }
       function ring(x, y, dmg, speed) { hazards.push({ type: "ring", x: x, y: y, r: S * 0.05, speed: speed || S * 0.00038, w: S * 0.05, dmg: dmg, life: 1, max: S * 1.0 }); sndQuake(); shake = Math.max(shake, 10); }
@@ -703,6 +721,7 @@
         for (let i = fx.length - 1; i >= 0; i--) { const e = fx[i]; e.t += dt; if (e.vx !== undefined) { e.x += e.vx * dt; e.y += e.vy * dt; e.vy += S * 0.0000012 * dt; if (e.rot !== undefined) e.rot += dt * 0.004; } if (e.t > e.dur) fx.splice(i, 1); }
         for (let i = ripples.length - 1; i >= 0; i--) { ripples[i].t += dt; if (ripples[i].t > ripples[i].dur) ripples.splice(i, 1); }
         for (let i = toasts.length - 1; i >= 0; i--) { toasts[i].t += dt; if (toasts[i].t > toasts[i].dur) toasts.splice(i, 1); }
+        if (mp) mpTick(dt);
         if (cut) { cut.t += dt; return; }
         if (scene === "house") { updateHouse(dt); return; }
         if (scene !== "world") return;
@@ -744,18 +763,173 @@
           // biome reach + gate guardians + boss trigger
           const bi = biomeOf(f.x);
           if (bi > save.reach) { save.reach = bi; markDirty(); toast(BIOMES[bi].name + " — " + BIOMES[bi].sign, BIOMES[bi].tokenCol); }
-          if (!mini && !save.miniDead[bi] && save.tokens[bi] >= BIOMES[bi].need && f.x > gateX(bi) - S * 1.8 && !inArena(f.x) && !inSafeZone(f.x, f.y)) spawnMini(bi);
-          if (bi === 4 && save.unlocked[4] && inArena(f.x) && !boss && !save.won && !cut) { startCut(BOSS_INTRO, function () { spawnBoss(); }); }
-          keepPrey(dt); updatePrey(dt);
-          enemies.forEach(function (e) { updateEnemy(e, dt); });
-          if (boss) updateBoss(dt);
-          updateHazards(dt);
+          if (!isPeer() && !(mp && mp.mode === "pvp") && !mini && !save.miniDead[bi] && save.tokens[bi] >= BIOMES[bi].need && f.x > gateX(bi) - S * 1.8 && !inArena(f.x) && !inSafeZone(f.x, f.y)) spawnMini(bi);
+          if (bi === 4 && save.unlocked[4] && inArena(f.x) && !boss && !save.won && !cut && !isPeer() && !(mp && mp.mode === "pvp")) { mpEvent({ type: "cut", which: "boss" }); startCut(BOSS_INTRO, function () { spawnBoss(); }); }
+          if (mp && mp.mode === "pvp") { /* arena: no bugs, no monsters — just frogs */ }
+          else if (isPeer()) { mpPeerSim(dt); updateHazards(dt); }
+          else { keepPrey(dt); updatePrey(dt); enemies.forEach(function (e) { updateEnemy(e, dt); }); if (boss) updateBoss(dt); updateHazards(dt); }
           for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i].dead && enemies[i].spawned) enemies.splice(i, 1);
         }
         // camera
         const cx = clamp(f.x - S / 2, 0, W - S), cy = clamp(f.y - S / 2, 0, H - S);
         const k = 1 - Math.pow(0.0025, dt / 1000);
         cam.x += (cx - cam.x) * k; cam.y += (cy - cam.y) * k;
+      }
+
+      // ================= MULTIPLAYER (co-op world + PvP arena) =================
+      // The relay (shell/net.js → server/server.js) only forwards messages. In co-op the HOST's browser simulates
+      // enemies/boss/hazards/prey and streams snapshots ~8×/s; peers render them and send "hit"/"eat" back.
+      // Everyone streams their own frog ("p") ~15×/s. In PvP each frog is its own authority; hits are sent to the target.
+      function mpEvent(ev) { if (isHost()) Arcade.net.send({ k: "ev", ev: ev }); }
+      function mpReset() { mp = null; try { Arcade.net.leave(); } catch (e) {} }
+      function mpOpenMenu() {
+        if (!Arcade.auth || !Arcade.auth.isSignedIn()) { Arcade.auth && Arcade.auth.signIn(); return; }
+        scene = "mpmenu"; mpMenuMsg = ""; sndClick();
+      }
+      async function mpStart(kind) {
+        mpMenuMsg = "connecting…";
+        try {
+          await Arcade.net.connect();
+          const room = kind === "join" ? await Arcade.net.join(prompt("Room code from your friend:") || "") : await Arcade.net.host(kind);
+          mpEnterLobby(room);
+        } catch (e) { mpMenuMsg = e.message || String(e); sndNo(); }
+      }
+      function mpEnterLobby(room) {
+        mp = { mode: room.mode, role: Arcade.net.isHost() ? "host" : "peer", code: room.code, hostId: room.hostId, players: {}, roster: room.players, started: false, shared: { tokens: [0, 0, 0, 0, 0], unlocked: [false, false, false, false, false], miniDead: [false, false, false, false, false] }, sendT: 0, snapT: 0, kills: {}, hitsDealt: 0, winner: null, winT: 0 };
+        scene = "lobby"; sndGate();
+        Arcade.net.off();
+        Arcade.net.on("room", function (r) { if (!mp) return; mp.roster = r.players; mp.hostId = r.hostId; mp.role = Arcade.net.isHost() ? "host" : "peer"; Object.keys(mp.players).forEach(function (id) { if (!r.players.some(function (q) { return q.id === id; })) delete mp.players[id]; }); });
+        Arcade.net.on("host", function (h) { if (!mp) return; mp.hostId = h.hostId; mp.role = Arcade.net.isHost() ? "host" : "peer"; toast(mp.role === "host" ? "You are the host now." : "New host: " + ((mp.roster.find(function (q) { return q.id === h.hostId; }) || {}).name || "?"), "#ffd36b"); if (mp.role === "host" && mp.mode === "coop") { save.tokens = mp.shared.tokens.slice(); save.unlocked = mp.shared.unlocked.slice(); save.miniDead = mp.shared.miniDead.slice(); } });
+        Arcade.net.on("peer-leave", function (q) { if (mp) { delete mp.players[q.id]; if (scene === "world") toast(q.name + " left.", "#b8b2cc"); } });
+        Arcade.net.on("peer-join", function (q) { if (mp && scene === "world") { toast(q.name + " joined!", "#7fe0a0"); if (isHost()) Arcade.net.to(q.id, { k: "start", mode: mp.mode, hx: p.x, hy: p.y, late: true }); } });
+        Arcade.net.on("close", function () { if (mp) { toast("Disconnected from the game server.", "#ff8fa3"); mp = null; if (scene === "lobby" || scene === "mpmenu") scene = "title"; } });
+        Arcade.net.on("error", function (e) { toast(e.message || e.code, "#ff8fa3"); });
+        Arcade.net.on("msg", mpOnMsg);
+      }
+      function mpLaunch(mode, hx, hy) {
+        mp.started = true; mp.mode = mode;
+        if (!save.started) { save = defaultSave(); save.started = true; }
+        resetWorld();
+        if (mode === "pvp") { newPlayer(gateX(4) + S * (0.4 + Math.random() * 1.6), H * (0.3 + Math.random() * 0.4)); p.hp = save.hpMax; enemies = []; prey = []; boss = null; mini = null; mp.kills = {}; mp.winner = null; }
+        else { const c = campPos(biomeOf(hx || campPos(0).x)); newPlayer(c.x + (Math.random() - 0.5) * S * 0.2, c.y + S * 0.15); if (isHost()) { mp.shared = { tokens: save.tokens, unlocked: save.unlocked, miniDead: save.miniDead }; } else { enemies = []; prey = []; boss = null; mini = null; hazards = []; } }
+        cam = { x: clamp(p.x - S / 2, 0, W - S), y: clamp(p.y - S / 2, 0, H - S) };
+        scene = "world"; talking = null; house = -1; cut = null; panel = null; ctx.setScore(save.total);
+        toast(mode === "pvp" ? "TONGUE DUEL — first to 5 knockouts wins!" : "Co-op: " + (isHost() ? "you host the world." : "the host's world. Kill together, loot is yours."), "#ffd36b");
+      }
+      function mpPlayerPacket() {
+        const t = p.tongue ? [Math.round(p.tongue.tx), Math.round(p.tongue.ty), +Math.sin(Math.min(1, p.tongue.t / p.tongue.dur) * Math.PI).toFixed(2)] : 0;
+        return { k: "p", x: Math.round(p.x), y: Math.round(p.y), f: p.face, z: +p.z.toFixed(2), sw: p.swim ? 1 : 0, tg: t, hp: p.hp, mx: save.hpMax, cr: save.won ? 1 : 0, ar: has("crownguard") ? "#ffd36b" : has("stone") ? "#8a85a8" : has("toadskin") ? "#5f9e5a" : "", dd: p.dead ? 1 : 0, sc: scene, sq: +p.sq.toFixed(2), kl: mp.kills[Arcade.net.id()] || 0 };
+      }
+      function mpTick(dt) {
+        if (!mp.started) return;
+        mp.sendT += dt; if (mp.sendT > 66 && p) { mp.sendT = 0; Arcade.net.send(mpPlayerPacket()); }
+        // interpolate remote frogs toward their last reported spot
+        Object.keys(mp.players).forEach(function (id) { const q = mp.players[id]; const k = Math.min(1, dt / 80); q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; if (q.tgk > 0) q.tgk = Math.max(0, q.tgk - dt / 260); });
+        if (isHost() && mp.mode === "coop") { mp.snapT += dt; if (mp.snapT > 125) { mp.snapT = 0; Arcade.net.send(mpSnapshot()); } }
+        if (mp.mode === "pvp" && mp.respawnT > 0) { mp.respawnT -= dt; if (mp.respawnT <= 0) { p.dead = false; p.hp = save.hpMax; p.iframes = 1500; p.x = p.tx = gateX(4) + S * (0.4 + Math.random() * 1.6); p.y = p.ty = H * (0.3 + Math.random() * 0.4); toast("Back in!", "#7fe0a0"); } }
+        if (mp.winner && mp.winT > 0) { mp.winT -= dt; if (mp.winT <= 0) { mp.winner = null; mp.kills = {}; toast("New round!", "#ffd36b"); } }
+      }
+      function mpSnapshot() {
+        const en = enemies.filter(function (e) { return !e.dead; }).map(function (e) { return [e.nid, e.kind, Math.round(e.x), Math.round(e.y), e.hp, e.hpMax, e.face, +(e.z || 0).toFixed(2), e.hurt > 0 ? 1 : 0, e.shield > 0 ? 1 : 0, e.atk ? 1 : 0, e.stun > 0 ? 1 : 0, e.parry ? 1 : 0, e.isMini ? 1 : 0, e.biome, e.def.size || 1, e.tele ? e.tele.kind : "", e.tele && e.tele.ang !== undefined ? +e.tele.ang.toFixed(2) : 0, e.name || "", e.gimmick || "", e.def.dmg, e.def.r]; });
+        const bs = boss ? [Math.round(boss.x), Math.round(boss.y), boss.hp, boss.hpMax, boss.face, +boss.z.toFixed(2), boss.phase, boss.weak || "", +boss.sq.toFixed(2), boss.hurt > 0 ? 1 : 0] : 0;
+        const hz = hazards.map(function (h) { const o = {}; Object.keys(h).forEach(function (k) { const v = h[k]; if (k === "pond" && v) o.pond = { x: v.x, y: v.y, rx: v.rx, ry: v.ry }; else if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") o[k] = typeof v === "number" ? +v.toFixed(2) : v; }); return o; });
+        const pr = prey.filter(function (q) { return Math.abs(q.x - p.x) < S * 3 || Object.keys(mp.players).some(function (id) { return Math.abs(q.x - mp.players[id].x) < S * 2; }); }).map(function (q) { return [q.nid, q.kind, Math.round(q.x), Math.round(q.y), q.hp]; });
+        return { k: "snap", en: en, bs: bs, hz: hz, pr: pr, tk: save.tokens, ul: save.unlocked, md: save.miniDead, S: S };
+      }
+      function mpApplySnapshot(m) {
+        const k = S / (m.S || S);   // the host may have a different canvas size → scale world coords
+        mp.shared.tokens = m.tk; mp.shared.unlocked = m.ul; mp.shared.miniDead = m.md;
+        const byNid = {}; enemies.forEach(function (e) { byNid[e.nid] = e; });
+        const next = []; let newMini = null;
+        m.en.forEach(function (a) {
+          let e = byNid[a[0]];
+          const def = Object.assign({}, ENEMY_DEF[a[1]] || ENEMY_DEF.snake, { size: a[15], dmg: a[20], r: a[21] });
+          if (!e) { e = { nid: a[0], kind: a[1], def: def, x: a[2] * k, y: a[3] * k, hx: a[2] * k, hy: a[3] * k, t: 0, cd: 0, poison: 0, fire: 0, dead: 0, slot: -1, biome: a[14], remote: true }; }
+          e.def = def; e.tx = a[2] * k; e.ty = a[3] * k; e.hp = a[4]; e.hpMax = a[5]; e.face = a[6]; e.z = a[7]; e.hurt = a[8] ? 200 : 0; e.shield = a[9] ? 500 : 0; e.atk = a[10] ? { t: 0 } : null; e.stun = a[11] ? 500 : 0; e.parry = !!a[12]; e.isMini = !!a[13]; e.tele = a[16] ? { kind: a[16], ang: a[17], t: 300, dur: 600 } : null; e.name = a[18] || undefined; e.gimmick = a[19] || undefined;
+          if (e.isMini) newMini = e;
+          next.push(e);
+        });
+        enemies = next; mini = newMini;
+        if (m.bs) { const b = m.bs; if (!boss) boss = { kind: "king", def: ENEMY_DEF.king, x: b[0] * k, y: b[1] * k, isBoss: true, name: "King Grumbold", remote: true, poison: 0, fire: 0, t: 0 }; boss.tx = b[0] * k; boss.ty = b[1] * k; boss.hp = b[2]; boss.hpMax = b[3]; boss.face = b[4]; boss.z = b[5]; boss.phase = b[6]; boss.weak = b[7] || null; boss.sq = b[8]; boss.hurt = b[9] ? 200 : 0; } else boss = null;
+        hazards = m.hz.map(function (h) { const o = Object.assign({}, h); ["x", "y", "r", "speed", "w", "max", "len", "vx", "vy", "y0", "y1", "maxX"].forEach(function (key) { if (typeof o[key] === "number") o[key] *= k; }); if (o.pond) { o.pond = { x: o.pond.x * k, y: o.pond.y * k, rx: o.pond.rx * k, ry: o.pond.ry * k }; } return o; });
+        const pByNid = {}; prey.forEach(function (q) { pByNid[q.nid] = q; });
+        prey = m.pr.map(function (a) { const q = pByNid[a[0]] || { nid: a[0], kind: a[1], def: PREY_DEF[a[1]] || PREY_DEF.fly, ph: Math.random() * TAU, vx: 0, vy: 0, hx: a[2] * k, hy: a[3] * k }; q.x = a[2] * k; q.y = a[3] * k; q.hp = a[4]; return q; });
+      }
+      function mpPeerSim(dt) {
+        // remote enemies: glide to the host's positions; bites land locally when a biting enemy is on top of us
+        enemies.forEach(function (e) { if (e.tx === undefined) return; const kk = Math.min(1, dt / 120); e.x += (e.tx - e.x) * kk; e.y += (e.ty - e.y) * kk; e.t += dt; e.cd -= dt; const R = e.def.r * S * (e.def.size || 1); if (e.atk && e.cd <= 0 && Math.hypot(p.x - e.x, p.y - e.y) < R + frogR() * 1.7 && !(e.def.water && !pondAt(p.x, p.y))) { takeHit(e.def.dmg, e.x, e.y); e.cd = 1100; } });
+        if (boss && boss.tx !== undefined) { const kk = Math.min(1, dt / 120); boss.x += (boss.tx - boss.x) * kk; boss.y += (boss.ty - boss.y) * kk; const R = S * 0.05 * boss.def.size; if ((boss.phase === "chase" || boss.phase === "charge") && Math.hypot(p.x - boss.x, p.y - boss.y) < R * 1.5 && (boss.cd || 0) <= 0) { takeHit(boss.phase === "charge" ? 3 : 2, boss.x, boss.y); boss.cd = 900; } boss.cd = (boss.cd || 0) - dt; }
+      }
+      function mpOnMsg(m) {
+        if (!mp) return;
+        const d = m.d; if (!d) return;
+        if (d.k === "p") {
+          let q = mp.players[m.from]; if (!q) { const r = (mp.roster || []).find(function (z) { return z.id === m.from; }); q = mp.players[m.from] = { id: m.from, name: r ? r.name : "Frog", x: d.x, y: d.y, tx: d.x, ty: d.y, tgk: 0 }; }
+          q.tx = d.x; q.ty = d.y; q.f = d.f; q.z = d.z; q.sw = d.sw; q.hp = d.hp; q.mx = d.mx; q.cr = d.cr; q.ar = d.ar; q.dead = !!d.dd; q.sc = d.sc; q.sq = d.sq; q.kills = d.kl || 0;
+          if (d.tg) { q.tg = d.tg; q.tgk = 1; } else q.tg = null;
+          if (Math.abs(q.tx - q.x) > S * 1.5 || Math.abs(q.ty - q.y) > S * 1.5) { q.x = q.tx; q.y = q.ty; }
+          return;
+        }
+        if (d.k === "start") { if (!mp.started) mpLaunch(d.mode, d.hx, d.hy); return; }
+        if (d.k === "snap" && isPeer()) { mpApplySnapshot(d); return; }
+        if (d.k === "hit" && isHost()) { const e = enemies.find(function (z) { return z.nid === d.nid; }) || (boss && boss.nid === d.nid ? boss : null) || (boss && d.nid === -1 ? boss : null); const t = e || (boss && Math.hypot(d.hx - boss.x, d.hy - boss.y) < S * 0.3 ? boss : null); if (t) damageEnemy(t, Math.min(d.dmg, 40), d.hx, d.hy, m.from); return; }
+        if (d.k === "eat" && isHost()) { const i = prey.findIndex(function (q) { return q.nid === d.nid; }); if (i >= 0) { const q = prey.splice(i, 1)[0]; Arcade.net.to(m.from, { k: "award", gems: q.def.gems, x: q.x, y: q.y }); addToken(biomeOf(q.x), q.x, q.y, q.def.tokens || 1); } return; }
+        if (d.k === "award") { addGems(d.gems, p.x, p.y - frogR() * 2); if (d.txt) toast(d.txt, "#ffd36b"); return; }
+        if (d.k === "ev") { const ev = d.ev; if (ev.type === "toast") toast(ev.text, ev.col); else if (ev.type === "shake") shake = Math.max(shake, ev.n); else if (ev.type === "cut" && !cut) { if (ev.which === "boss") startCut(BOSS_INTRO, null); else if (ev.which === "ending") startCut(ENDING, function () { toast("The Frog King is defeated. Long live Pip!", "#ffd36b"); }); } return; }
+        if (d.k === "pvphit" && mp.mode === "pvp") { if (p.dead || p.iframes > 0) return; const before = p.hp; takeHit(Math.min(d.dmg, 20), d.fx, d.fy); if (p.hp <= 0 && before > 0) { Arcade.net.send({ k: "ko", by: m.from }); mp.kills[m.from] = (mp.kills[m.from] || 0) + 1; mpCheckWin(); } return; }
+        if (d.k === "ko" && mp.mode === "pvp") { mp.kills[d.by] = (mp.kills[d.by] || 0) + 1; const who = mp.players[m.from]; const byName = d.by === Arcade.net.id() ? "You" : ((mp.players[d.by] || {}).name || "Someone"); toast(byName + " knocked out " + (who ? who.name : "a frog") + "!", "#ff8fa3"); mpCheckWin(); return; }
+        if (d.k === "win") { mp.winner = d.id; mp.winT = 5000; const nm = d.id === Arcade.net.id() ? "YOU WIN!" : ((mp.players[d.id] || {}).name || "Someone") + " wins!"; toast(nm, "#ffd36b"); confetti(p.x, p.y - frogR()); A().arp([523, 659, 784, 1046, 1318], { dur: 0.2, step: 0.08, vol: 0.12, type: "sine" }); return; }
+      }
+      function mpCheckWin() { if (!isHost() || mp.winner) return; const ids = Object.keys(mp.kills); for (let i = 0; i < ids.length; i++) if (mp.kills[ids[i]] >= 5) { mp.winner = ids[i]; mp.winT = 5000; Arcade.net.send({ k: "win", id: ids[i] }); toast(ids[i] === Arcade.net.id() ? "YOU WIN!" : ((mp.players[ids[i]] || {}).name || "Someone") + " wins!", "#ffd36b"); confetti(p.x, p.y - frogR()); return; } }
+      // pvp: dying = knocked out for 2.5 s, then respawn
+      function mpDied() { if (!mp || mp.mode !== "pvp") return false; p.dead = true; p.hp = 0; mp.respawnT = 2500; A().tone(200, 0.5, { type: "sawtooth", vol: 0.1, glide: 60 }); confetti(p.x, p.y); return true; }
+      function drawRemotePlayers(items, vis) {
+        if (!mp) return;
+        Object.keys(mp.players).forEach(function (id) {
+          const q = mp.players[id]; if (q.sc !== "world" || !vis(q.x, q.y, S * 0.3)) return;
+          items.push({ y: q.y + (q.sw ? -S : 0), f: function () {
+            const x = q.x - cam.x, y = q.y - cam.y, R = frogR();
+            const tongue = q.tg && q.tgk > 0 ? { tx: q.tg[0], ty: q.tg[1], k: q.tgk } : null;
+            const o = { sq: q.sq || 0, tongue: tongue, crown: !!q.cr, armor: q.ar || null, body: "#a8e6a0", dark: "#5f9e5a", belly: "#e8ffe4", blink: ((now + id.charCodeAt(0) * 37) % 3300) < 150, hurt: false };
+            if (q.dead) { g.globalAlpha = 0.35; }
+            if (q.sw) { g.save(); g.beginPath(); g.rect(x - R * 3, y - R * 3, R * 6, R * 3.35); g.clip(); drawFrog(g, x, y + R * 0.3, R, q.f || 1, now, o); g.restore(); } else { drawShadow(x, y, R * 1.1, q.z || 0); drawFrog(g, x, y - (q.z || 0) * R * 1.6, R, q.f || 1, now, o); }
+            g.globalAlpha = 1;
+            g.save(); g.font = "700 " + Math.round(S * 0.018) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "rgba(10,8,20,0.7)"; const w = g.measureText(q.name).width + S * 0.02; rr(g, x - w / 2, y - R * 2.6, w, S * 0.028, S * 0.01); g.fill(); g.fillStyle = "#e6ecf5"; g.fillText(q.name, x, y - R * 2.6 + S * 0.014); g.restore();
+            drawHpBar(x, y - R * 2.1, R * 2.2, q.hp || 0, q.mx || 5, "#ff6b8a");
+          } });
+        });
+      }
+      function drawMpHud() {
+        if (!mp || !mp.started) return;
+        g.save(); g.font = "700 " + Math.round(S * 0.018) + "px system-ui, sans-serif"; g.textAlign = "right"; g.textBaseline = "middle";
+        const list = [{ id: Arcade.net.id(), name: "You", kills: mp.kills[Arcade.net.id()] || 0 }].concat(Object.keys(mp.players).map(function (id) { const q = mp.players[id]; return { id: id, name: q.name, kills: mp.kills[id] || 0, hp: q.hp, mx: q.mx }; }));
+        list.forEach(function (q, i) { const y = S * 0.16 + i * S * 0.03; g.fillStyle = q.id === mp.hostId ? "#ffd36b" : "rgba(230,236,245,0.85)"; g.fillText((mp.mode === "pvp" ? q.kills + " KO  " : "") + q.name + (q.id === mp.hostId ? " ★" : ""), S * 0.97, y); });
+        g.fillStyle = "rgba(230,236,245,0.45)"; g.font = "600 " + Math.round(S * 0.015) + "px system-ui, sans-serif"; g.fillText("room " + mp.code + " · " + (mp.mode === "pvp" ? "tongue duel" : "co-op"), S * 0.97, S * 0.16 + list.length * S * 0.03);
+        g.restore();
+      }
+      function mpMenuButtons() { const list = [{ id: "coop", label: "Host a co-op world" }, { id: "pvp", label: "Host a tongue duel (PvP)" }, { id: "join", label: "Join with a code" }, { id: "back", label: "Back" }]; return list.map(function (b, i) { return Object.assign(b, { x: S * 0.25, y: S * 0.4 + i * S * 0.1, w: S * 0.5, h: S * 0.075 }); }); }
+      function drawMpMenu() {
+        g.fillStyle = "#0e1a18"; g.fillRect(0, 0, S, S);
+        drawFrog(g, S * 0.38, S * 0.24, S * 0.07, 1, now, { happy: true }); drawFrog(g, S * 0.62, S * 0.24, S * 0.07, -1, now, { body: "#a8e6a0", dark: "#5f9e5a", belly: "#e8ffe4", happy: true });
+        g.save(); g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = GREEN; g.font = "800 " + Math.round(S * 0.055) + "px system-ui, sans-serif"; g.fillText("PLAY TOGETHER", S / 2, S * 0.1);
+        g.fillStyle = "rgba(230,236,245,0.65)"; g.font = "500 " + Math.round(S * 0.022) + "px system-ui, sans-serif"; g.fillText("signed in as " + ((Arcade.auth.user() || {}).name || "?"), S / 2, S * 0.34);
+        mpMenuButtons().forEach(function (b) { rr(g, b.x, b.y, b.w, b.h, S * 0.02); g.fillStyle = b.id === "back" ? "rgba(255,255,255,0.06)" : "rgba(127,224,160,0.16)"; g.fill(); g.strokeStyle = b.id === "back" ? "rgba(255,255,255,0.3)" : GREEN; g.lineWidth = 2; g.stroke(); g.fillStyle = "#e6ecf5"; g.font = "700 " + Math.round(S * 0.028) + "px system-ui, sans-serif"; g.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2); });
+        if (mpMenuMsg) { g.fillStyle = "#ffd36b"; g.font = "600 " + Math.round(S * 0.022) + "px system-ui, sans-serif"; g.fillText(mpMenuMsg, S / 2, S * 0.84); }
+        g.fillStyle = "rgba(230,236,245,0.45)"; g.font = "500 " + Math.round(S * 0.018) + "px system-ui, sans-serif"; g.fillText("Co-op: one world, everyone's loot is their own. PvP: tongue duel in the castle arena, first to 5.", S / 2, S * 0.9);
+        g.restore();
+      }
+      function lobbyButtons() { const list = []; if (isHost()) list.push({ id: "start", label: "Start", x: S * 0.3, y: S * 0.74, w: S * 0.4, h: S * 0.08 }); list.push({ id: "leave", label: "Leave", x: S * 0.35, y: S * 0.85, w: S * 0.3, h: S * 0.065 }); return list; }
+      function drawLobby() {
+        g.fillStyle = "#0e1a18"; g.fillRect(0, 0, S, S);
+        g.save(); g.textAlign = "center"; g.textBaseline = "middle";
+        g.fillStyle = "rgba(230,236,245,0.65)"; g.font = "600 " + Math.round(S * 0.024) + "px system-ui, sans-serif"; g.fillText(mp.mode === "pvp" ? "TONGUE DUEL — room code" : "CO-OP WORLD — room code", S / 2, S * 0.12);
+        g.fillStyle = "#ffd36b"; g.shadowColor = "#ffd36b"; g.shadowBlur = S * 0.03; g.font = "800 " + Math.round(S * 0.14) + "px ui-monospace, monospace"; g.fillText(mp.code, S / 2, S * 0.24); g.shadowBlur = 0;
+        g.fillStyle = "rgba(230,236,245,0.5)"; g.font = "500 " + Math.round(S * 0.02) + "px system-ui, sans-serif"; g.fillText("friends: open Frog Quest → Play Together → Join with a code", S / 2, S * 0.34);
+        (mp.roster || []).forEach(function (q, i) { const y = S * 0.44 + i * S * 0.055; drawFrog(g, S * 0.3, y, S * 0.022, 1, now, q.id === Arcade.net.id() ? {} : { body: "#a8e6a0", dark: "#5f9e5a", belly: "#e8ffe4" }); g.textAlign = "left"; g.fillStyle = "#e6ecf5"; g.font = "700 " + Math.round(S * 0.026) + "px system-ui, sans-serif"; g.fillText(q.name + (q.id === mp.hostId ? "  ★ host" : "") + (q.id === Arcade.net.id() ? "  (you)" : ""), S * 0.36, y); });
+        g.textAlign = "center";
+        if (!isHost()) { g.fillStyle = "rgba(230,236,245,0.6)"; g.font = "600 " + Math.round(S * 0.024) + "px system-ui, sans-serif"; g.fillText("waiting for the host to start…", S / 2, S * 0.78); }
+        lobbyButtons().forEach(function (b) { rr(g, b.x, b.y, b.w, b.h, S * 0.02); g.fillStyle = b.id === "start" ? "rgba(127,224,160,0.2)" : "rgba(255,255,255,0.06)"; g.fill(); g.strokeStyle = b.id === "start" ? GREEN : "rgba(255,255,255,0.3)"; g.lineWidth = 2; g.stroke(); g.fillStyle = "#e6ecf5"; g.font = "700 " + Math.round(S * 0.03) + "px system-ui, sans-serif"; g.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2); });
+        g.restore();
       }
 
       // ---- cutscenes ----
@@ -788,7 +962,7 @@
       function inRect(r, x, y) { return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h; }
 
       // ---- title ----
-      function titleButtons() { const hasSave = save.started; const list = []; if (hasSave) list.push({ id: "continue", label: "Continue", y: S * 0.62 }); list.push({ id: "new", label: hasSave ? "New Game" : "Start", y: S * (hasSave ? 0.71 : 0.64) }); return list.map(function (b) { return Object.assign(b, { x: S * 0.32, w: S * 0.36, h: S * 0.07 }); }); }
+      function titleButtons() { const hasSave = save.started; const list = []; if (hasSave) list.push({ id: "continue", label: "Continue", y: S * 0.6 }); list.push({ id: "new", label: hasSave ? "New Game" : "Start", y: S * (hasSave ? 0.685 : 0.62) }); const signed = Arcade.auth && Arcade.auth.isSignedIn(), avail = Arcade.auth && Arcade.auth.available(); list.push({ id: "mp", label: signed ? "Play Together" : avail ? "🔒 Play Together — sign in" : "Play Together (offline)", y: S * (hasSave ? 0.77 : 0.705), dim: !signed }); return list.map(function (b) { return Object.assign(b, { x: S * 0.32, w: S * 0.36, h: S * 0.07 }); }); }
       function drawTitle() {
         g.fillStyle = "#0e1a18"; g.fillRect(0, 0, S, S);
         for (let i = 0; i < 40; i++) { const x = ((i * 137.5) % 100) / 100 * S, y = ((i * 71.3) % 100) / 100 * S * 0.5; g.fillStyle = "rgba(255,255,255," + (0.1 + 0.3 * (0.5 + 0.5 * Math.sin(now * 0.002 + i))) + ")"; dot(g, x, y, S * 0.003); }
@@ -797,8 +971,8 @@
         g.save(); g.textAlign = "center"; g.textBaseline = "middle";
         g.fillStyle = GREEN; g.shadowColor = GREEN; g.shadowBlur = S * 0.03; g.font = "800 " + Math.round(S * 0.1) + "px system-ui, sans-serif"; g.fillText("FROG QUEST", S / 2, S * 0.16);
         g.shadowBlur = 0; g.fillStyle = "rgba(230,236,245,0.7)"; g.font = "500 " + Math.round(S * 0.026) + "px system-ui, sans-serif"; g.fillText("a small frog vs. the Frog King", S / 2, S * 0.24);
-        titleButtons().forEach(function (b) { rr(g, b.x, b.y, b.w, b.h, S * 0.02); g.fillStyle = b.id === "continue" || !save.started ? "rgba(127,224,160,0.2)" : "rgba(255,255,255,0.08)"; g.fill(); g.strokeStyle = b.id === "continue" || !save.started ? GREEN : "rgba(255,255,255,0.3)"; g.lineWidth = 2; g.stroke(); g.fillStyle = "#e6ecf5"; g.font = "700 " + Math.round(S * 0.03) + "px system-ui, sans-serif"; g.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2); });
-        if (save.started) { g.fillStyle = "rgba(230,236,245,0.5)"; g.font = "500 " + Math.round(S * 0.02) + "px system-ui, sans-serif"; g.fillText(BIOMES[save.reach].name + " · " + save.gems + " gems · " + save.tokens.reduce(function (a, b) { return a + b; }, 0) + " tokens" + (save.won ? " · KING" : ""), S / 2, S * 0.84); }
+        titleButtons().forEach(function (b) { rr(g, b.x, b.y, b.w, b.h, S * 0.02); g.fillStyle = b.dim ? "rgba(255,255,255,0.04)" : (b.id === "continue" || (!save.started && b.id === "new")) ? "rgba(127,224,160,0.2)" : "rgba(255,255,255,0.08)"; g.fill(); g.strokeStyle = b.dim ? "rgba(255,255,255,0.18)" : (b.id === "continue" || (!save.started && b.id === "new")) ? GREEN : "rgba(255,255,255,0.3)"; g.lineWidth = 2; g.stroke(); g.fillStyle = "#e6ecf5"; g.font = "700 " + Math.round(S * 0.03) + "px system-ui, sans-serif"; g.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2); });
+        if (save.started) { g.fillStyle = "rgba(230,236,245,0.5)"; g.font = "500 " + Math.round(S * 0.02) + "px system-ui, sans-serif"; g.fillText(BIOMES[save.reach].name + " · " + save.gems + " gems · " + save.tokens.reduce(function (a, b) { return a + b; }, 0) + " tokens" + (save.won ? " · KING" : ""), S / 2, S * 0.9); }
         g.restore();
       }
       function beginGame(fresh) {
@@ -825,7 +999,7 @@
         else if (kind === "shroom") { const r2 = S * 0.035 * s; g.fillStyle = "#f4e2c2"; rr(g, x - r2 * 0.3, y - r2 * 0.6, r2 * 0.6, r2 * 0.8, r2 * 0.2); g.fill(); g.fillStyle = "#ff6b6b"; g.shadowColor = "#ff6b6b"; g.shadowBlur = r2 * 0.4; g.beginPath(); g.arc(x, y - r2 * 0.6, r2, Math.PI, 0); g.closePath(); g.fill(); g.shadowBlur = 0; g.fillStyle = "#fff"; dot(g, x - r2 * 0.4, y - r2 * 0.95, r2 * 0.14); dot(g, x + r2 * 0.3, y - r2 * 1.1, r2 * 0.16); }
       }
       function drawGate(i, x, y) {
-        const open = save.unlocked[i], b = BIOMES[i];
+        const open = unlockedArr()[i], b = BIOMES[i];
         const ph = S * 0.34;  // arch half-height
         g.fillStyle = i === 4 ? "#2a2440" : "#3a3048";
         rr(g, x - S * 0.05, 0, S * 0.1, y - ph, S * 0.02); g.fill(); rr(g, x - S * 0.05, y + ph, S * 0.1, H - y - ph, S * 0.02); g.fill();
@@ -837,7 +1011,7 @@
           // lock badge: token shape + count
           g.save(); g.translate(x, y); g.fillStyle = "rgba(10,8,20,0.85)"; dot(g, 0, 0, S * 0.075); g.strokeStyle = b.tokenCol; g.lineWidth = 3; g.beginPath(); g.arc(0, 0, S * 0.075, 0, TAU); g.stroke();
           g.fillStyle = b.tokenCol; g.shadowColor = b.tokenCol; g.shadowBlur = S * 0.02; g.save(); g.translate(0, -S * 0.02); SHAPE[b.token](g, S * 0.03); g.restore(); g.shadowBlur = 0;
-          g.fillStyle = "#e6ecf5"; g.font = "800 " + Math.round(S * 0.026) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(Math.min(save.tokens[i], b.need) + "/" + b.need, 0, S * 0.03); g.restore();
+          g.fillStyle = "#e6ecf5"; g.font = "800 " + Math.round(S * 0.026) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(Math.min(tokensArr()[i], b.need) + "/" + b.need, 0, S * 0.03); g.restore();
         } else { g.fillStyle = "rgba(127,224,160,0.12)"; rr(g, x - S * 0.035, y - ph, S * 0.07, ph * 2, S * 0.01); g.fill(); }
       }
       function drawCamp(i, x, y) {
@@ -993,6 +1167,7 @@
           if (e.atk) { g.fillStyle = "#ff6b6b"; g.font = "800 " + Math.round(S * 0.03) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("!", x, y - S * 0.09 * (e.def.size || 1) - S * 0.03); } if (e.hp < e.hpMax || e.isMini) drawHpBar(x, y - S * 0.08 * (e.def.size || 1) - S * 0.03, S * 0.1 * (e.def.size || 1), e.hp, e.hpMax, e.isMini ? "#ffd36b" : "#ff6b6b"); if (e.poison > 0) { g.fillStyle = "#7fe0a0"; dot(g, x + S * 0.03, y - S * 0.06, S * 0.008); } if (e.fire > 0) { g.fillStyle = "#ff8f6b"; dot(g, x - S * 0.03 + Math.sin(now * 0.02) * S * 0.01, y - S * 0.07, S * 0.01); } } }); });
         if (boss && vis(boss.x, boss.y, S)) items.push({ y: boss.y, f: function () { const x = boss.x - cam.x, y = boss.y - cam.y, R = S * 0.05 * boss.def.size; drawShadow(x, y, R * 1.1, boss.z); drawEnemy(g, boss, x, y - boss.z * R * 0.9, S, now); const wp = bossWeakPoint(); if (wp) { const pulse = 0.6 + 0.4 * Math.sin(now * 0.015); g.fillStyle = "rgba(255,211,107," + (0.25 * pulse) + ")"; dot(g, wp.x - cam.x, wp.y - cam.y - boss.z * R * 0.9, S * 0.1); g.strokeStyle = "#ffd36b"; g.lineWidth = 3; g.shadowColor = "#ffd36b"; g.shadowBlur = S * 0.02; g.beginPath(); g.arc(wp.x - cam.x, wp.y - cam.y - boss.z * R * 0.9, S * 0.07 * pulse, 0, TAU); g.stroke(); g.shadowBlur = 0; } } });
         items.push({ y: p.y + (p.swim ? -S : 0), f: function () { drawThePlayer(p.x - cam.x, p.y - cam.y); } });
+        drawRemotePlayers(items, vis);
         items.sort(function (a, b) { return a.y - b.y; }); items.forEach(function (it) { it.f(); });
         prey.forEach(function (q) { if (vis(q.x, q.y, S * 0.1)) drawPrey(g, q.kind, q.x - cam.x, q.y - cam.y, q.def.r * S, now, q.ph); });
         drawHazards();
@@ -1053,7 +1228,7 @@
         g.fillStyle = "rgba(255,255,255,0.12)"; rr(g, S * 0.03, S * 0.075, S * 0.22, S * 0.014, S * 0.007); g.fill(); g.fillStyle = p.zip > 0 ? "#ffd36b" : p.stam < 10 ? (Math.floor(now / 200) % 2 ? "#ff6b6b" : "#ff8fa3") : "#74b9ff"; rr(g, S * 0.03, S * 0.075, S * 0.22 * p.stam / 100, S * 0.014, S * 0.007); g.fill(); if (p.stam < 10 && p.zip <= 0) { g.fillStyle = "rgba(255,107,107,0.9)"; g.font = "700 " + Math.round(S * 0.016) + "px system-ui, sans-serif"; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText("tired", S * 0.26, S * 0.082); }
         // biome + token progress (center)
         g.save(); g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "rgba(230,236,245,0.85)"; g.font = "700 " + Math.round(S * 0.024) + "px system-ui, sans-serif"; g.fillText(inArena(p.x) ? "The Castle" : b.name, S / 2, S * 0.035);
-        g.translate(S / 2 - S * 0.035, S * 0.075); g.fillStyle = b.tokenCol; g.shadowColor = b.tokenCol; g.shadowBlur = S * 0.015; SHAPE[b.token](g, S * 0.016); g.shadowBlur = 0; g.fillStyle = "#e6ecf5"; g.font = "800 " + Math.round(S * 0.026) + "px system-ui, sans-serif"; g.textAlign = "left"; g.fillText(save.tokens[bi] + " / " + b.need, S * 0.03, 0); g.restore();
+        g.translate(S / 2 - S * 0.035, S * 0.075); g.fillStyle = b.tokenCol; g.shadowColor = b.tokenCol; g.shadowBlur = S * 0.015; SHAPE[b.token](g, S * 0.016); g.shadowBlur = 0; g.fillStyle = "#e6ecf5"; g.font = "800 " + Math.round(S * 0.026) + "px system-ui, sans-serif"; g.textAlign = "left"; g.fillText(tokensArr()[bi] + " / " + b.need, S * 0.03, 0); g.restore();
         // gems (right)
         g.save(); g.translate(S * 0.9, S * 0.045); g.fillStyle = "#74b9ff"; g.shadowColor = "#74b9ff"; g.shadowBlur = S * 0.015; SHAPE.gem(g, S * 0.018); g.shadowBlur = 0; g.fillStyle = "#e6ecf5"; g.font = "800 " + Math.round(S * 0.03) + "px system-ui, sans-serif"; g.textAlign = "right"; g.textBaseline = "middle"; g.fillText(String(save.gems), -S * 0.03, 0); g.restore();
         // potions (bottom-left)
@@ -1069,7 +1244,7 @@
           if (inArena(p.x + RR)) { g.fillStyle = "#231d3a"; g.fillRect(cx + (gateX(4) - p.x) * k, cy - m, m * 2, m * 2); }
           const mp = function (wx, wy) { return { x: cx + (wx - p.x) * k, y: cy + (wy - p.y) * k }; };
           BIOMES.forEach(function (bb, b2) { bb.ponds.forEach(function (q) { const c2 = mp((b2 + q[0]) * bw(), q[1] * H); g.fillStyle = bb.water; ell(g, c2.x, c2.y, q[2] * bw() * k, q[3] * H * k); g.fill(); }); });
-          for (let gi = 0; gi < 5; gi++) { const gx = mp(gateX(gi), 0).x; if (Math.abs(gx - cx) < m) { g.fillStyle = save.unlocked[gi] ? "rgba(127,224,160,0.6)" : "rgba(255,255,255,0.5)"; g.fillRect(gx - 1.5, cy - m, 3, m * 2); g.fillStyle = "rgba(10,8,20,0.9)"; const ay = mp(0, H / 2).y; g.fillRect(gx - 2, ay - S * 0.34 * k, 4, S * 0.68 * k); } }
+          for (let gi = 0; gi < 5; gi++) { const gx = mp(gateX(gi), 0).x; if (Math.abs(gx - cx) < m) { g.fillStyle = unlockedArr()[gi] ? "rgba(127,224,160,0.6)" : "rgba(255,255,255,0.5)"; g.fillRect(gx - 1.5, cy - m, 3, m * 2); g.fillStyle = "rgba(10,8,20,0.9)"; const ay = mp(0, H / 2).y; g.fillRect(gx - 2, ay - S * 0.34 * k, 4, S * 0.68 * k); } }
           for (let b2 = Math.max(0, bi2 - 1); b2 <= Math.min(4, bi2 + 1); b2++) {
             const c2 = mp(campPos(b2).x, campPos(b2).y); g.strokeStyle = "rgba(127,224,160,0.5)"; g.lineWidth = 1; g.beginPath(); g.arc(c2.x, c2.y, S * 0.3 * k, 0, TAU); g.stroke(); g.fillStyle = "#ffb86b"; dot(g, c2.x, c2.y, 3);
             smithPositions(b2).forEach(function (sp2, k2) { const q = mp(sp2.x, sp2.y); g.fillStyle = ["#ff6b8a", "#74b9ff", "#e0a3ff"][k2]; g.fillRect(q.x - 3, q.y - 3, 6, 6); });
@@ -1095,6 +1270,7 @@
           g.restore();
         }
         if (scene === "world") drawTalk();
+        drawMpHud();
         // toasts
         toasts.forEach(function (t, i) { const a = Math.min(1, t.t / 200) * (t.t > t.dur - 400 ? (t.dur - t.t) / 400 : 1); g.save(); g.globalAlpha = Math.max(0, a); g.font = "700 " + Math.round(S * 0.022) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; const w = Math.min(S * 0.9, g.measureText(t.text).width + S * 0.05); rr(g, S / 2 - w / 2, S * 0.83 - i * S * 0.055 - S * 0.022, w, S * 0.044, S * 0.015); g.fillStyle = "rgba(10,8,20,0.8)"; g.fill(); g.fillStyle = t.col; g.fillText(t.text, S / 2, S * 0.83 - i * S * 0.055); g.restore(); });
         if (p.dead || fade > 0) { g.fillStyle = "rgba(10,8,20," + fade + ")"; g.fillRect(0, 0, S, S); }
@@ -1131,6 +1307,8 @@
       function draw() {
         g.clearRect(0, 0, S, S);
         if (scene === "title") { drawTitle(); return; }
+        if (scene === "mpmenu") { drawMpMenu(); return; }
+        if (scene === "lobby") { if (!mp) { scene = "title"; return; } drawLobby(); return; }
         if (cut) { drawCut(); return; }
         if (scene === "house") { drawHouseScene(); if (fade > 0) { g.fillStyle = "rgba(10,8,20," + fade + ")"; g.fillRect(0, 0, S, S); } return; }
         drawWorld();
@@ -1138,7 +1316,9 @@
 
       // ---- input ----
       function leftClick(x, y) {
-        if (scene === "title") { titleButtons().forEach(function (b) { if (inRect(b, x, y)) { sndClick(); beginGame(b.id === "new"); } }); return; }
+        if (scene === "title") { titleButtons().forEach(function (b) { if (inRect(b, x, y)) { if (b.id === "mp") { mpOpenMenu(); return; } sndClick(); beginGame(b.id === "new"); } }); return; }
+        if (scene === "mpmenu") { mpMenuButtons().forEach(function (b) { if (inRect(b, x, y)) { sndClick(); if (b.id === "back") { scene = "title"; return; } mpStart(b.id); } }); return; }
+        if (scene === "lobby") { lobbyButtons().forEach(function (b) { if (inRect(b, x, y)) { sndClick(); if (b.id === "leave") { mpReset(); scene = "title"; return; } if (b.id === "start" && isHost()) { const st = { k: "start", mode: mp.mode, hx: save.reach > 0 ? save.x * W : campPos(0).x, hy: save.y * H }; Arcade.net.send(st); mpLaunch(mp.mode, st.hx, st.hy); } } }); return; }
         if (cut) { if (inRect(skipRect(), x, y)) endCut(); else cutNext(); return; }
         if (panel) { panelClick(x, y); return; }
         if (p.dead || fadeDir) return;
@@ -1206,7 +1386,7 @@
           ctx.setScore(save.total || 0);
           Arcade.input.setPointerTarget(canvas);
           unResize = Arcade.board.onResize(function () { resize(); });
-          Arcade._quest = { get: function () { return { scene: scene, cut: !!cut, panel: panel, p: p, save: save, cam: cam, S: S, W: W, H: H, prey: prey, enemies: enemies, boss: boss, mini: mini, hazards: hazards, gates: [0, 1, 2, 3, 4].map(gateX), camps: [0, 1, 2, 3, 4].map(campPos), smiths: p ? smithPositions(biomeOf(p.x)) : [], houses: p ? housePositions(biomeOf(p.x)) : [], npcs: p ? npcPositions(biomeOf(p.x)) : [], chests: p ? chestPositions(biomeOf(p.x)) : [], pois: p ? poiPositions(biomeOf(p.x)) : [], jumpPrompt: jumpPrompt, talking: talking, scene2: scene }; }, cheat: function (o) { Object.assign(save, o); markDirty(); persist(); } };
+          Arcade._quest = { get: function () { return { scene: scene, cut: !!cut, panel: panel, p: p, save: save, cam: cam, S: S, W: W, H: H, prey: prey, enemies: enemies, boss: boss, mini: mini, hazards: hazards, gates: [0, 1, 2, 3, 4].map(gateX), camps: [0, 1, 2, 3, 4].map(campPos), smiths: p ? smithPositions(biomeOf(p.x)) : [], houses: p ? housePositions(biomeOf(p.x)) : [], npcs: p ? npcPositions(biomeOf(p.x)) : [], chests: p ? chestPositions(biomeOf(p.x)) : [], pois: p ? poiPositions(biomeOf(p.x)) : [], jumpPrompt: jumpPrompt, talking: talking, scene2: scene, mp: mp }; }, mp: function () { return { openMenu: mpOpenMenu, start: mpStart, enter: mpEnterLobby, launch: function (mode) { if (mp) { const st = { k: "start", mode: mode, hx: save.reach > 0 ? save.x * W : campPos(0).x, hy: save.y * H }; Arcade.net.send(st); mpLaunch(mode, st.hx, st.hy); } } }; }, cheat: function (o) { Object.assign(save, o); markDirty(); persist(); } };
           draw();
         },
         handleInput(intent) {
@@ -1221,6 +1401,7 @@
           if (unResize) unResize(); unResize = null;
           if (canvas && ctxMenu) canvas.removeEventListener("contextmenu", ctxMenu); ctxMenu = null;
           if (keyFn) window.removeEventListener("keydown", keyFn); keyFn = null;
+          if (mp) { mpReset(); } try { Arcade.net.disconnect(); } catch (e) {}
           if (window.Arcade) delete Arcade._quest;
           stageEl = ctx = canvas = g = null; prey = []; enemies = []; hazards = []; fx = []; ripples = []; toasts = []; boss = null; mini = null; p = null;
         }

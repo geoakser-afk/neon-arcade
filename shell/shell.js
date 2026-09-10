@@ -60,6 +60,18 @@
     right.appendChild(musicBtn);
     right.appendChild(fxBtn);
     right.appendChild(muteBtn);
+    // account button: Sign in (Clerk) → avatar/name when signed in. Only multiplayer needs it.
+    const acct = el("button", "acct-btn", "Sign in");
+    const acctSync = () => {
+      const au = A.auth, u = au && au.user();
+      if (!au || !au.available()) { acct.style.display = location.protocol.startsWith("http") ? "" : "none"; acct.textContent = "Sign in"; acct.title = "Sign in (needed only for Play Together)"; return; }
+      acct.style.display = "";
+      if (u) { acct.innerHTML = (u.avatar ? '<img src="' + u.avatar + '" alt="">' : "") + '<span>' + u.name.replace(/[<>&]/g, "") + "</span>"; acct.title = "Signed in — account"; acct.classList.add("on"); }
+      else { acct.textContent = "Sign in"; acct.title = "Sign in (needed only for Play Together)"; acct.classList.remove("on"); }
+    };
+    acct.onclick = () => { if (A.auth && A.auth.isSignedIn()) A.auth.profile(); else if (A.auth) A.auth.signIn(); };
+    document.addEventListener("arcade:auth", acctSync); acctSync(); if (A.auth) A.auth.ready.then(acctSync);
+    right.appendChild(acct);
 
     hud.appendChild(left); hud.appendChild(right);
     app.appendChild(hud);

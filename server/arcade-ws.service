@@ -1,0 +1,16 @@
+[Unit]
+Description=Neon Arcade realtime relay (WebSocket rooms for multiplayer)
+After=network.target
+
+[Service]
+Type=simple
+User=george
+WorkingDirectory=/opt/arcade-server
+Environment=PORT=8787
+Environment=CLERK_JWKS_URL=https://pro-elephant-6619.clerk.accounts.dev/.well-known/jwks.json
+ExecStart=/usr/local/bin/node /opt/arcade-server/server.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
