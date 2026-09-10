@@ -66,7 +66,7 @@
       const au = A.auth, u = au && au.user();
       if (!au || !au.available()) { acct.style.display = location.protocol.startsWith("http") ? "" : "none"; acct.textContent = "Sign in"; acct.title = "Sign in (needed only for Play Together)"; return; }
       acct.style.display = "";
-      if (u) { acct.innerHTML = (u.avatar ? '<img src="' + u.avatar + '" alt="">' : "") + '<span>' + u.name.replace(/[<>&]/g, "") + "</span>"; acct.title = "Signed in — account"; acct.classList.add("on"); }
+      if (u) { acct.innerHTML = (u.avatar ? '<img src="' + u.avatar + '" alt="" width="24" height="24" style="width:24px;height:24px;border-radius:50%">' : "") + '<span>' + u.name.replace(/[<>&]/g, "") + "</span>"; acct.title = "Signed in — account"; acct.classList.add("on"); }
       else { acct.textContent = "Sign in"; acct.title = "Sign in (needed only for Play Together)"; acct.classList.remove("on"); }
     };
     acct.onclick = () => { if (A.auth && A.auth.isSignedIn()) A.auth.profile(); else if (A.auth) A.auth.signIn(); };
