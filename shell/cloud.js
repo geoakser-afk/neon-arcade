@@ -25,6 +25,12 @@
     const m = ts(); m[key] = Date.now(); origSet(TS_KEY, m);
     if (enabled()) schedulePush();
   };
+  // per-game handles (ctx.storage = Arcade.storage.game(id)) call storage.js's private set — route them through the hook too
+  const origGame = A.storage.game;
+  A.storage.game = function (id) {
+    const h = origGame(id), pre = "g:" + id + ":";
+    return { get: h.get, best: h.best, set: function (k, v) { A.storage.set(pre + k, v); }, recordScore: function (score) { const b = h.best(); if (score > b) { A.storage.set(pre + "best", score); return true; } return false; } };
+  };
   function schedulePush() { pending = true; clearTimeout(pushT); pushT = setTimeout(push, 1500); }
 
   async function push() {
