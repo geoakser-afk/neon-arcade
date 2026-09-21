@@ -27,7 +27,7 @@ const path = require("path");
 const PORT = +process.env.PORT || 8787;
 const JWKS_URL = process.env.CLERK_JWKS_URL || "https://pro-elephant-6619.clerk.accounts.dev/.well-known/jwks.json";
 const ALLOW_GUEST = process.env.ALLOW_GUEST === "1";
-const MAX_PLAYERS = 6, MAX_MSG_BYTES = 8192, MSGS_PER_SEC = 40, CONNS_PER_IP = 8, IDLE_MS = 90000;
+const MAX_PLAYERS = 8, MAX_MSG_BYTES = 8192, MSGS_PER_SEC = 40, CONNS_PER_IP = 8, IDLE_MS = 90000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const MAX_SAVE_BYTES = 256 * 1024;   // per user cloud save blob
 try { fs.mkdirSync(path.join(DATA_DIR, "saves"), { recursive: true }); } catch (e) {}
