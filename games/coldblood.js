@@ -422,7 +422,7 @@
     scoreLabel: "Wave",
     create() {
       let stageEl, ctx, wrap, canvas, g, topbar, panel, overlay, styleEl, unResize = null, keyFn = null, raf = null;
-      let S = 0, dpr = 1, now = 0, reduced = false;
+      let S = 0, dpr = 1, now = 0, reduced = false, banner = false;
       let save, meta;
       let screen = "menu";                         // menu | tree | game | end
       let map = null, diff = null, paths = [], towers = [], enemies = [], shots = [], fx = [], floaters = [], auras = [];
@@ -778,9 +778,6 @@
       function drawMenuBg() {
         const grd = g.createLinearGradient(0, 0, S, S); grd.addColorStop(0, "#0e1a18"); grd.addColorStop(1, "#141026"); g.fillStyle = grd; g.fillRect(0, 0, S, S);
         for (let i = 0; i < 40; i++) { g.fillStyle = "rgba(255,255,255," + (0.08 + 0.25 * (0.5 + 0.5 * Math.sin(now * 0.002 + i))) + ")"; dot(g, hash(i, 7) * S, hash(i, 8) * S, S * 0.003); }
-        // parade of reptiles
-        const types = Object.keys(TOWERS);
-        types.forEach((tp, i) => { const x = S * 0.06 + i * (S * 0.88 / (types.length - 1)), y = S * 0.82 + Math.sin(now * 0.002 + i) * S * 0.01; g.save(); g.translate(x, y); g.rotate(-Math.PI / 2); g.globalAlpha = unlocked(tp) ? 1 : 0.25; drawReptile(g, tp, S * 0.028, now + i * 400, unlocked(tp) ? 1 : 0, 0); g.restore(); });
         g.save(); g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "#7fe0a0"; if (!lowFx()) { g.shadowColor = "#7fe0a0"; g.shadowBlur = S * 0.03; } g.font = "900 " + Math.round(S * 0.11) + "px system-ui, sans-serif"; g.fillText("COLD BLOOD", S / 2, S * 0.14); g.shadowBlur = 0; g.fillStyle = "rgba(230,236,245,0.7)"; g.font = "600 " + Math.round(S * 0.026) + "px system-ui, sans-serif"; g.fillText("reptile tower defense", S / 2, S * 0.215); g.restore();
       }
 
@@ -788,7 +785,7 @@
       function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
       function iconCanvas(type, size) { const c = document.createElement("canvas"); const d = window.devicePixelRatio || 1; c.width = c.height = Math.round(size * d); c.style.width = c.style.height = size + "px"; const gg = c.getContext("2d"); gg.setTransform(d, 0, 0, d, 0, 0); gg.translate(size / 2, size / 2); gg.rotate(-Math.PI / 2); drawReptile(gg, type, size * 0.2, 0, 0, 0); return c; }
       function bugCanvas(type, size) { const c = document.createElement("canvas"); const d = window.devicePixelRatio || 1; c.width = c.height = Math.round(size * d); c.style.width = c.style.height = size + "px"; const gg = c.getContext("2d"); gg.setTransform(d, 0, 0, d, 0, 0); gg.translate(size / 2, size / 2); drawBug(gg, type, size * (ENEMIES[type].boss ? 0.12 : 0.22), 0, 0, false); return c; }
-      function renderUI() { renderHud(); renderPanel(); }
+      function renderUI() { const b = screen === "menu" || screen === "tree"; if (wrap && b !== banner) { banner = b; wrap.classList.toggle("banner", b); resize(); } renderHud(); renderPanel(); }
       // The top bar is built ONCE and then patched in place. (It used to be wiped + rebuilt every 400 ms and on every
       // kill, which destroyed the button between your press and the click — that's why Pause/auto/speed felt laggy.)
       function renderHud() {
@@ -851,6 +848,13 @@
         panel.appendChild(grid);
         const tip = el("div", "cb-tip"); const nextBoss = [10, 20, 30, 35, 40].find((w) => w >= wave); tip.textContent = nextBoss ? "Next boss: wave " + nextBoss + " (" + ENEMIES[{ 10: "bigbeetle", 20: "centipede", 30: "raptor", 35: "ankylo", 40: "trex" }[nextBoss]].name + ") · survive it for a 🥚 egg drop" : "Freeplay — bosses every 5 waves drop eggs, bugs keep scaling."; panel.appendChild(tip);
       }
+      function paradeRow() {
+        const types = Object.keys(TOWERS), have = types.filter(unlocked).length;
+        const row = el("div", "cb-parade"); row.title = have + " of " + types.length + " reptiles unlocked";
+        types.forEach((tp, i) => { const ok = unlocked(tp), c = iconCanvas(tp, 38); c.className = ok ? "" : "lock"; c.style.animationDelay = (i * 0.17) + "s"; c.title = TOWERS[tp].name + (ok ? "" : " · locked"); row.appendChild(c); });
+        const lab = el("small", null, have + " / " + types.length + " reptiles"); row.appendChild(lab);
+        return row;
+      }
       function showMenu() {
         screen = "menu"; renderUI(); overlay.innerHTML = ""; overlay.style.display = ""; overlay.classList.add("menu"); overlay.classList.remove("tree");
         const card = el("div", "cb-card-big");
@@ -864,6 +868,7 @@
         if (save.rebirth) { const rb = el("div", "cb-rbline"); rb.innerHTML = "✦ Rebirth <b>" + save.rebirth + "</b> · " + REBIRTH_PERKS.filter((r) => r.n <= save.rebirth).map((r) => TOWERS[r.reptile].name).join(", ") + " unlocked"; card.appendChild(rb); }
         tree = null;
         const go = el("button", "btn cb-go", "Defend " + MAPS[pickMap].name); go.onclick = () => { overlay.style.display = "none"; newRun(pickMap, pickDiff, null); }; card.appendChild(go);
+        card.appendChild(paradeRow());
         if (!save.seen) { card.appendChild(el("p", "cb-help", "Bugs march down the road toward your nest. Pick a reptile below the map, tap the ground beside the road to place it, then Start wave. Click a reptile to upgrade it down two of its three paths. Dinosaurs show up at waves 10, 20, 30, 35 and 40 — each one you survive drops eggs on the spot, so you can hit ☰ → Skill tree mid-run and come right back stronger.")); }
         overlay.appendChild(card);
       }
@@ -896,7 +901,7 @@
         const nav = el("div", "cb-treenav"); Object.keys(BRANCH).forEach((br) => { const b = el("button", "cb-branchbtn", br); b.style.setProperty("--bc", BRANCH[br].col); const owned = TREE.filter((nd) => nd.branch === br && save.nodes[nd.id]).length, total = TREE.filter((nd) => nd.branch === br).length; b.innerHTML = br + "<small>" + owned + " / " + total + "</small>"; b.onclick = () => flyTo(br); nav.appendChild(b); }); const hint = el("div", "cb-treehint", "drag to look around · wheel / pinch to zoom · tap a node"); nav.appendChild(hint); card.appendChild(nav);
         const holder = el("div", "cb-treeholder"); const cv = document.createElement("canvas"); cv.className = "cb-treecv"; holder.appendChild(cv); const detail = el("div", "cb-treedetail"); holder.appendChild(detail); card.appendChild(holder);
         overlay.appendChild(card);
-        const W = Math.min(card.clientWidth - 40, 880), H = Math.max(320, Math.min(560, overlay.clientHeight - (holder.getBoundingClientRect().top - overlay.getBoundingClientRect().top) - 30));
+        const W = Math.min(card.clientWidth - 40, 880), H = Math.max(320, Math.min(560, window.innerHeight - holder.getBoundingClientRect().top - 24));
         cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = W + "px"; cv.style.height = H + "px";
         const pos = layoutTree();
         tree = { cv, gg: cv.getContext("2d"), W, H, cam: { x: 0, y: 0, z: 1 }, nodes: pos, sel: null, fx: [], drag: null, pinch: null, target: null, detail, eggsEl, t0: performance.now(), stars: [] };
@@ -1063,8 +1068,8 @@
         const wide = window.innerWidth >= 900;
         S = wide ? Math.floor(Math.min(window.innerWidth - 340, window.innerHeight * 0.8, 820)) : Arcade.board.stageSize(700);
         dpr = window.devicePixelRatio || 1;
-        canvas.style.width = S + "px"; canvas.style.height = S + "px"; canvas.width = Math.round(S * dpr); canvas.height = Math.round(S * dpr); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-        wrap.classList.toggle("wide", wide);
+        const bh = banner ? Math.round(S * 0.3) : S; canvas.style.width = S + "px"; canvas.style.height = bh + "px"; canvas.width = Math.round(S * dpr); canvas.height = Math.round(bh * dpr); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        wrap.classList.toggle("wide", wide); if (overlay) { overlay.style.setProperty("--cbtop", Math.round(S * 0.255) + "px"); overlay.style.setProperty("--cbw", S + "px"); }
         if (map) { paths = [buildPath(map.path)]; if (map.path2) paths.push(buildPath(map.path2)); }
       }
 
@@ -1075,7 +1080,7 @@
           wrap = el("div", "cb"); const left = el("div", "cb-left"); topbar = el("div", "cb-top"); hud = null; canvas = document.createElement("canvas"); canvas.className = "cb-canvas"; g = canvas.getContext("2d");
           left.appendChild(topbar); left.appendChild(canvas); toastEl = el("div", "cb-toast"); left.appendChild(toastEl); wrap.appendChild(left);
           panel = el("div", "cb-panel"); wrap.appendChild(panel);
-          overlay = el("div", "cb-overlay"); wrap.appendChild(overlay);
+          overlay = el("div", "cb-overlay"); left.appendChild(overlay);
           stage.appendChild(wrap);
           canvas.addEventListener("contextmenu", (e) => e.preventDefault());
           load(); if (!save.seen) { /* first-run help shows on the menu */ }
@@ -1127,11 +1132,11 @@
 .cb-up{width:100%;display:grid;grid-template-columns:1fr auto;gap:2px 8px;text-align:left;background:rgba(127,224,160,.12);border:1px solid rgba(127,224,160,.4);border-radius:10px;padding:6px 8px;color:#e6ecf5;font:inherit;cursor:pointer}.cb-up b{font-size:13px}.cb-up small{grid-column:1;opacity:.7;font-size:11px}.cb-up em{grid-row:1/3;align-self:center;font-style:normal;font-weight:800;color:#ffd36b}.cb-up.poor{opacity:.5;border-color:rgba(255,255,255,.15);background:rgba(255,255,255,.04)}
 .cb-maxed{font-size:12px;color:#7fe0a0;font-weight:700}.cb-maxed.dim{color:rgba(230,236,245,.45);font-weight:500}
 .cb-sel-foot{display:flex;gap:8px;margin-top:6px}.cb-target,.cb-sell{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:8px;color:#e6ecf5;font:inherit;font-size:13px;font-weight:700;cursor:pointer}.cb-sell{border-color:rgba(255,107,107,.5);color:#ff8fa3}
-.cb-overlay{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;z-index:5;overflow-y:auto;padding:6px}.cb-overlay.menu{padding-top:min(24vh,190px)}.cb-overlay.menu.tree{padding-top:6px}
+.cb-overlay{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;z-index:5;overflow-y:auto;padding:6px}.cb-overlay.menu{padding-top:var(--cbtop,190px)}.cb-overlay.menu.tree{padding-top:6px}.cb.banner .cb-overlay{position:static;inset:auto;padding:0;overflow:visible;width:100%}.cb.banner .cb-overlay.menu{padding-top:0}.cb.banner .cb-left{margin-top:14px}.cb.banner .cb-card-big{width:var(--cbw,100%);max-width:100%;box-sizing:border-box}.cb.banner .cb-canvas{border-radius:18px 18px 8px 8px;cursor:default}
 .cb-card-big{width:min(880px,100%);background:rgba(14,11,26,.94);border:1px solid rgba(127,224,160,.35);border-radius:22px;padding:18px 20px;box-shadow:0 0 60px rgba(127,224,160,.12);backdrop-filter:blur(6px)}
 .cb-menu-top{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}.cb-menu-top h2{margin:0;font-size:22px;flex:1}.cb-eggs{font-weight:800;color:#ffd36b;font-size:18px}
 .cb-continue{width:100%;margin-bottom:10px;background:#ffd36b!important;color:#0e0c1e!important}.cb-treecont{background:#ffd36b!important;color:#0e0c1e!important}
-.cb-maps{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.cb-maps{display:grid;grid-template-columns:repeat(auto-fill,minmax(124px,1fr));gap:10px;margin-bottom:12px}
 .cb-map{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:6px;color:#e6ecf5;font:inherit;cursor:pointer;text-align:left}.cb-map canvas{width:100%;height:auto;border-radius:10px;display:block}.cb-map.on{border-color:var(--mc);box-shadow:0 0 18px color-mix(in srgb,var(--mc) 40%,transparent)}.cb-map-name b{display:block;font-size:13px;margin-top:6px}.cb-map-name small{opacity:.6;font-size:11px;display:block}.cb-map-name i{font-style:normal;font-size:11px;color:#ffd36b;display:block}
 .cb-diffs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}.cb-diff{flex:1;min-width:120px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:8px;color:#e6ecf5;font:inherit;cursor:pointer}.cb-diff b{display:block}.cb-diff small{opacity:.6;font-size:11px}.cb-diff.on{border-color:#7fe0a0;background:rgba(127,224,160,.14)}
 .cb-go{width:100%;font-size:16px!important;padding:12px!important}
@@ -1143,7 +1148,7 @@
 .cb-treeholder{position:relative}.cb-treecv{display:block;border-radius:16px;border:1px solid rgba(255,255,255,.1);touch-action:none;cursor:grab;width:100%}
 .cb-treedetail{position:absolute;left:12px;right:12px;bottom:12px;background:rgba(10,8,22,.9);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;backdrop-filter:blur(6px);display:flex;flex-direction:column;gap:6px;max-width:460px;margin:0 auto}
 .cb-td-head{display:flex;align-items:center;gap:10px}.cb-td-head b{display:block;font-size:16px}.cb-td-head small{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase}.cb-td-desc{margin:0;opacity:.85;font-size:13px}.cb-td-row{display:flex;gap:8px}.cb-td-buy{flex:1;font-size:14px!important}.cb-td-buy.off{opacity:.5}.cb-td-owned{color:#7fe0a0;font-weight:800}.cb-td-empty{opacity:.6;font-size:13px}
-.cb-eggs.pop{animation:cbeggpop .5s}.cb-hudeggs b{color:#ffd36b}.cb-hudeggs.pop{animation:cbeggpop .7s}@keyframes cbeggpop{0%{transform:scale(1)}30%{transform:scale(1.35);color:#fff}100%{transform:scale(1)}}
+.cb-parade{display:flex;align-items:center;gap:2px;flex-wrap:wrap;justify-content:center;margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)}.cb-parade canvas{animation:cbbob 2.2s ease-in-out infinite}.cb-parade canvas.lock{opacity:.22;filter:grayscale(1)}.cb-parade small{width:100%;text-align:center;opacity:.5;font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin-top:2px}@keyframes cbbob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}.cb-eggs.pop{animation:cbeggpop .5s}.cb-hudeggs b{color:#ffd36b}.cb-hudeggs.pop{animation:cbeggpop .7s}@keyframes cbeggpop{0%{transform:scale(1)}30%{transform:scale(1.35);color:#fff}100%{transform:scale(1)}}
 @media (max-width:899px){.cb-treehint{display:none}.cb-treedetail{left:6px;right:6px;bottom:6px;padding:8px}}
 .cb-rbbtn{background:rgba(255,255,255,.06)!important;color:#e6ecf5!important;display:flex;flex-direction:column;line-height:1.1;padding:6px 12px!important}.cb-rbbtn small{font-size:10px;opacity:.65;font-weight:600}.cb-rbbtn.ready{background:linear-gradient(135deg,#ffd36b,#ff8f3d)!important;color:#0e0c1e!important;animation:cbpulse 1.2s infinite;--tc:#ffd36b}.cb-rbbtn.ready small{opacity:.8}
 .cb-rbmodal{position:fixed;inset:0;background:rgba(6,5,14,.8);display:flex;align-items:center;justify-content:center;z-index:9;border-radius:22px}.cb-rbcard{width:min(520px,94%);background:#14112a;border:1px solid rgba(255,211,107,.5);border-radius:20px;padding:18px 20px;box-shadow:0 0 60px rgba(255,211,107,.2);text-align:center}.cb-rbcard h2{margin:0 0 6px;color:#ffd36b}
