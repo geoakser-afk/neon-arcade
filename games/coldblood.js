@@ -86,10 +86,12 @@
     chameleon: { name: "Chameleon",    cost: 320, dmg: 22, rate: 0.55, range: 0.34, kind: "dart", air: true, col: "#c98cff", dark: "#7f5fa0", desc: "Sniper tongue. Long range, big single hits.", pierce: 1, crit: 0.1 },
     cobra:     { name: "Cobra",        cost: 380, dmg: 3,  rate: 0.9, range: 0.19, kind: "spray", air: true, col: "#4fd18a", dark: "#2a7a4a", desc: "Venom spray. Poisons everything in a cone.", poison: 6, cone: 0.55 },
     tortoise:  { name: "Tortoise",     cost: 300, dmg: 0,  rate: 0, range: 0.2,  kind: "aura",  air: true,  col: "#a8c6a0", dark: "#5f8a5a", desc: "Support. Slows bugs nearby and steadies allies.", slow: 0.25, buff: 0 },
+    hatchery:  { name: "Iguana Hatchery", cost: 550, dmg: 0, rate: 0, range: 0.1, kind: "farm", air: true, col: "#c9e07f", dark: "#6e8a3a", desc: "Money maker. Iguanas lay golden eggs — pays out after every wave.", income: 100 },
+    snapper:   { name: "Snapping Turtle", cost: 700, dmg: 70, rate: 0.35, range: 0.17, kind: "bite", air: false, col: "#4a8a7a", dark: "#25504a", desc: "WATER ONLY. Lurks under the surface; bites hard and drags bugs under.", armorPierce: 4, execute: 0.08, waterOnly: true },
     komodo:    { name: "Komodo Dragon",cost: 520, dmg: 30, rate: 0.8, range: 0.12, kind: "bite",  air: false, col: "#b8865a", dark: "#6a4a2a", desc: "Brawler. Savage bites that leave bacteria (bleed).", bleed: 5, unlock: "komodo" },
-    croc:      { name: "Crocodile",    cost: 650, dmg: 18, rate: 0.45, range: 0.15, kind: "slam",  air: false, col: "#2f6e3f", dark: "#1a4a28", desc: "Death roll. Slams everything close, stuns briefly.", stun: 0.6, armorPierce: 2, unlock: "croc" },
+    croc:      { name: "Crocodile",    cost: 650, dmg: 18, rate: 0.45, range: 0.15, kind: "slam",  air: false, col: "#2f6e3f", dark: "#1a4a28", desc: "Amphibious — build on land OR in water. Death roll slams everything close, stuns briefly.", stun: 0.6, armorPierce: 2, water: true, unlock: "croc" },
     basilisk:  { name: "Basilisk",     cost: 900, dmg: 9,  rate: 1.4, range: 0.24, kind: "beam",  air: true,  col: "#ff8fd0", dark: "#a04a8a", desc: "Stone gaze. A beam that pierces a whole line of bugs.", pierce: 4, unlock: "basilisk" },
-    ptero:     { name: "Pterodactyl",  cost: 1100, dmg: 26, rate: 1.1, range: 0.3, kind: "dart",  air: true,  col: "#74b9ff", dark: "#3f7fc4", desc: "Sky hunter. Shreds flyers, bonus damage in the air.", pierce: 2, airBonus: 2, unlock: "ptero" },
+    ptero:     { name: "Pterodactyl",  cost: 1100, dmg: 26, rate: 1.1, range: 0.3, kind: "dart",  air: true,  col: "#74b9ff", dark: "#3f7fc4", desc: "Sky hunter. Flies ANYWHERE — over road, water, lava. Can patrol a lane. Bonus damage vs flyers.", pierce: 2, airBonus: 2, fly: true, unlock: "ptero" },
     trex:      { name: "T-Rex",        cost: 2400, dmg: 90, rate: 0.5, range: 0.2, kind: "bite",  air: false, col: "#ff6b4d", dark: "#8a2a2a", desc: "The king. Devastating bites; a roar that freezes the road.", roar: 9, roarDur: 2.2, armorPierce: 6, unlock: "trex" },
     // ---- REBIRTH reptiles: one per rebirth, permanent ----
     emberdrake:   { name: "Ember Drake",     cost: 1500, dmg: 12, rate: 1.1, range: 0.24, kind: "spray",  air: true,  col: "#ff8f3d", dark: "#a8401a", desc: "Dragonfire cone. Everything it touches burns.", poison: 14, cone: 0.5, rebirth: 1 },
@@ -163,6 +165,16 @@
     ]
   };
 
+  UP.hatchery = [
+    { name: "Brood", tiers: [{ n: "Bigger Clutch", c: 350, d: "+$70 every wave", m: (s) => { s.income += 70; } }, { n: "Twin Iguanas", c: 800, d: "+$140 every wave", m: (s) => { s.income += 140; } }, { n: "Golden Eggs", c: 2000, d: "+$300/wave, lays $40 every 10 s mid-wave", m: (s) => { s.income += 300; s.trickle = 40; } }] },
+    { name: "Nest Vault", tiers: [{ n: "Vault", c: 400, d: "stores eggs, +15% interest/wave, tap to collect (cap $3000)", m: (s) => { s.bank = 0.15; s.cap = 3000; } }, { n: "Deep Vault", c: 900, d: "+20% interest, cap $8000", m: (s) => { s.bank = 0.2; s.cap = 8000; } }, { n: "Dragon's Hoard", c: 2400, d: "+30% interest, cap $20000", m: (s) => { s.bank = 0.3; s.cap = 20000; } }] },
+    { name: "Market", tiers: [{ n: "Egg Trader", c: 380, d: "kills nearby pay +15%", m: (s) => { s.cashBonus = 0.15; s.range *= 1.6; } }, { n: "Bazaar", c: 850, d: "kills nearby pay +35%", m: (s) => { s.cashBonus = 0.35; s.range *= 1.3; } }, { n: "Monopoly", c: 2200, d: "kills nearby pay +70%, +$60/wave", m: (s) => { s.cashBonus = 0.7; s.income += 60; } }] }
+  ];
+  UP.snapper = [
+    { name: "Ambush", tiers: [{ n: "Long Neck", c: 300, d: "+30% range", m: (s) => { s.range *= 1.3; } }, { n: "Lunge", c: 700, d: "+50 damage", m: (s) => { s.dmg += 50; } }, { n: "Leviathan", c: 1800, d: "+150 damage, bosses take 2×", m: (s) => { s.dmg += 150; s.bossMul = 2; } }] },
+    { name: "Drag Under", tiers: [{ n: "Undertow", c: 350, d: "15% to drag a bug under (instant kill)", m: (s) => { s.execute = 0.15; } }, { n: "Riptide", c: 800, d: "25% drag-under", m: (s) => { s.execute = 0.25; } }, { n: "The Deep", c: 2000, d: "40% drag-under, bites stun 1 s", m: (s) => { s.execute = 0.4; s.stunChance = 1; s.stunHit = 1; } }] },
+    { name: "Shell", tiers: [{ n: "Quick Snap", c: 320, d: "+40% attack speed", m: (s) => { s.rate *= 1.4; } }, { n: "Jaws", c: 750, d: "+50% attack speed", m: (s) => { s.rate *= 1.5; } }, { n: "Shellbreaker", c: 1900, d: "ignores all armor, bites slow 50%", m: (s) => { s.armorPierce += 99; s.slowHit = 0.5; } }] }
+  ];
   UP.emberdrake = [
     { name: "Inferno", tiers: [{ n: "Hotter", c: 500, d: "+60% burn", m: (s) => { s.poison *= 1.6; } }, { n: "Lingering Flame", c: 1100, d: "burn lasts 2×", m: (s) => { s.poisonDur *= 2; } }, { n: "Hellfire", c: 2600, d: "burn ignores armor, +20/s", m: (s) => { s.poison += 20; s.poisonArmor = true; } }] },
     { name: "Wingspan", tiers: [{ n: "Glide", c: 450, d: "+30% range", m: (s) => { s.range *= 1.3; } }, { n: "Wide Breath", c: 1000, d: "cone 1.6× wider", m: (s) => { s.cone *= 1.6; } }, { n: "Firestorm", c: 2400, d: "full-circle breath, +40% speed", m: (s) => { s.cone = Math.PI; s.rate *= 1.4; } }] },
@@ -286,7 +298,25 @@
       g.fillStyle = "#ffd36b"; dot(g, r * 1.0, -r * 0.38, r * 0.12); g.fillStyle = "#1a1a1a"; dot(g, r * 1.03, -r * 0.38, r * 0.06);
       if (tier >= 3) { g.fillStyle = "#ffd36b"; g.beginPath(); g.moveTo(r * 0.6, -r * 0.7); g.lineTo(r * 0.7, -r * 1.1); g.lineTo(r * 0.85, -r * 0.8); g.lineTo(r * 1.0, -r * 1.15); g.lineTo(r * 1.1, -r * 0.7); g.fill(); }
     }
-    else if (type === "emberdrake" || type === "ancientdragon") {
+    else if (type === "hatchery") {
+      g.rotate(Math.PI / 2);
+      g.fillStyle = "#6e4a2a"; ell(g, 0, 0, r * 1.25, r * 1.0); g.fill(); g.shadowBlur = 0; g.fillStyle = "#4a3018"; ell(g, 0, r * 0.05, r * 0.85, r * 0.65); g.fill();
+      g.strokeStyle = "#8a6238"; g.lineWidth = r * 0.08; for (let i = 0; i < 10; i++) { const a = i / 10 * TAU; g.beginPath(); g.moveTo(Math.cos(a) * r * 0.9, Math.sin(a) * r * 0.72); g.lineTo(Math.cos(a + 0.5) * r * 1.2, Math.sin(a + 0.5) * r * 0.95); g.stroke(); }
+      const gl = 0.6 + 0.4 * Math.sin(now * 0.004); g.fillStyle = "#ffd36b"; if (!lowFx()) { g.shadowColor = "#ffd36b"; g.shadowBlur = r * 0.5 * gl; }
+      [[-0.3, -0.1], [0.25, -0.15], [0, 0.22]].forEach((e, i) => { ell(g, e[0] * r, e[1] * r, r * 0.28, r * 0.36); g.fill(); }); g.shadowBlur = 0;
+      g.fillStyle = "#fff4c8"; [[-0.3, -0.1], [0.25, -0.15], [0, 0.22]].forEach((e) => { dot(g, e[0] * r - r * 0.08, e[1] * r - r * 0.12, r * 0.07); });
+      // iguana on the rim
+      g.save(); g.translate(r * 0.9, -r * 0.7); g.rotate(-0.6 + Math.sin(now * 0.002) * 0.1); g.strokeStyle = dark; g.lineWidth = r * 0.14; g.lineCap = "round"; g.beginPath(); g.moveTo(-r * 0.5, 0); g.lineTo(-r * 1.1, r * 0.2 * Math.sin(now * 0.003)); g.stroke(); g.fillStyle = col; ell(g, 0, 0, r * 0.6, r * 0.24); g.fill(); ell(g, r * 0.6, 0, r * 0.22, r * 0.17); g.fill(); g.fillStyle = dark; for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(-r * 0.4 + i * r * 0.22, -r * 0.2); g.lineTo(-r * 0.32 + i * r * 0.22, -r * 0.45); g.lineTo(-r * 0.24 + i * r * 0.22, -r * 0.2); g.fill(); } g.fillStyle = "#1a1a1a"; dot(g, r * 0.68, -r * 0.06, r * 0.04); g.restore();
+    } else if (type === "snapper") {
+      g.strokeStyle = rgba("#9fe3ff", 0.35 + 0.2 * Math.sin(now * 0.005)); g.lineWidth = r * 0.06; g.beginPath(); g.arc(0, 0, r * 1.7 + Math.sin(now * 0.003) * r * 0.1, 0, TAU); g.stroke();
+      g.strokeStyle = dark; g.lineWidth = r * 0.3; g.lineCap = "round"; [[-0.6, -0.8], [-0.6, 0.8], [0.5, -0.85], [0.5, 0.85]].forEach((p, i) => { g.beginPath(); g.moveTo(p[0] * r, p[1] * r * 0.6); g.lineTo(p[0] * r + r * 0.15, p[1] * r + Math.sin(now * 0.004 + i) * r * 0.08); g.stroke(); });
+      g.strokeStyle = dark; g.lineWidth = r * 0.2; g.beginPath(); g.moveTo(-r * 0.9, 0); g.lineTo(-r * 1.5, Math.sin(now * 0.003) * r * 0.2); g.stroke();
+      g.fillStyle = dark; ell(g, 0, 0, r * 1.05, r * 0.85); g.fill(); g.shadowBlur = 0; g.fillStyle = col; ell(g, 0, 0, r * 0.85, r * 0.68); g.fill();
+      g.strokeStyle = dark; g.lineWidth = r * 0.06; for (let i = 0; i < 3; i++) { g.beginPath(); g.moveTo(-r * 0.7 + i * r * 0.5, -r * 0.6); g.lineTo(-r * 0.7 + i * r * 0.5, r * 0.6); g.stroke(); } g.beginPath(); g.moveTo(-r * 0.8, 0); g.lineTo(r * 0.8, 0); g.stroke();
+      g.fillStyle = shade(col, 0.85); for (let i = 0; i < 3; i++) { g.beginPath(); g.moveTo(-r * 0.5 + i * r * 0.5, -r * 0.05); g.lineTo(-r * 0.4 + i * r * 0.5, -r * 0.35); g.lineTo(-r * 0.3 + i * r * 0.5, -r * 0.05); g.fill(); }
+      g.fillStyle = dark; ell(g, r * 1.15 + rec * r * 0.5, 0, r * 0.45, r * 0.34); g.fill(); g.fillStyle = "#e6ecf5"; g.beginPath(); g.moveTo(r * 1.5 + rec * r * 0.5, -r * 0.1); g.lineTo(r * 1.75 + rec * r * 0.7, 0); g.lineTo(r * 1.5 + rec * r * 0.5, r * 0.1); g.fill();
+      g.fillStyle = "#ffd36b"; dot(g, r * 1.2 + rec * r * 0.5, -r * 0.18, r * 0.08); dot(g, r * 1.2 + rec * r * 0.5, r * 0.18, r * 0.08);
+    } else if (type === "emberdrake" || type === "ancientdragon") {
       const big = type === "ancientdragon", flap = Math.sin(now * 0.008) * 0.3, W = big ? 2.6 : 2.0;
       g.fillStyle = dark; [-1, 1].forEach((d) => { g.beginPath(); g.moveTo(-r * 0.2, 0); g.lineTo(-r * 0.9, d * r * W * (0.75 + flap * 0.25)); g.lineTo(r * 0.4, d * r * W * 0.9 * (0.75 + flap * 0.25)); g.lineTo(r * 0.9, d * r * 0.5); g.closePath(); g.fill(); });
       g.strokeStyle = col; g.lineWidth = r * 0.08; [-1, 1].forEach((d) => { for (let k = 0; k < 3; k++) { g.beginPath(); g.moveTo(-r * 0.1, 0); g.lineTo(-r * 0.9 + k * r * 0.65, d * r * W * (0.75 + flap * 0.25) * (0.7 + k * 0.15)); g.stroke(); } });
@@ -397,7 +427,7 @@
       let screen = "menu";                         // menu | tree | game | end
       let map = null, diff = null, paths = [], towers = [], enemies = [], shots = [], fx = [], floaters = [], auras = [];
       let cash = 0, lives = 0, wave = 0, waveActive = false, queue = [], waveT = 0, speed = 1, paused = false, autoNext = false, freeplay = false, won = false;
-      let selected = null, placing = null, hover = null, hoverValid = false, idSeq = 1, shakeT = 0, roadDash = 0, nextWaveIn = 0, statsDirty = true;
+      let selected = null, placing = null, moving = null, hud = null, hover = null, hoverValid = false, idSeq = 1, shakeT = 0, roadDash = 0, nextWaveIn = 0, statsDirty = true;
       let pickMap = 0, pickDiff = 1, toastEl = null, toastT = null;
 
       // ---------- persistence ----------
@@ -415,41 +445,48 @@
       function distToSeg(px, py, ax, ay, bx, by) { const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1; const t = clamp(((px - ax) * dx + (py - ay) * dy) / L2, 0, 1); return dist(px, py, ax + dx * t, ay + dy * t); }
       function distToRoad(x, y) { let m = 1e9; paths.forEach((P) => { for (let i = 1; i < P.pts.length; i++) m = Math.min(m, distToSeg(x, y, P.pts[i - 1].x, P.pts[i - 1].y, P.pts[i].x, P.pts[i].y)); }); return m; }
       function roadW() { return S * 0.075; }
-      function blocked(x, y, r) {
+      function blocked(x, y, r, type, ignore) {
+        const T = type ? TOWERS[type] : null;
         if (x < r || y < r || x > S - r || y > S - r) return "edge";
+        for (const t of towers) if (t !== ignore && t.patrol == null && dist(x, y, t.x, t.y) < r + towerR(t) * 0.95) return "tower";
+        if (T && T.fly) return null;
         if (distToRoad(x, y) < roadW() / 2 + r * 0.8) return "road";
-        for (const w of (map.water || []).concat(map.lava || [])) { const dx = (x - w[0] * S) / (w[2] * S + r), dy = (y - w[1] * S) / (w[3] * S + r); if (dx * dx + dy * dy < 1) return "water"; }
+        const inside = (w, pad) => { const dx = (x - w[0] * S) / (w[2] * S + pad), dy = (y - w[1] * S) / (w[3] * S + pad); return dx * dx + dy * dy < 1; };
+        for (const w of (map.lava || [])) if (inside(w, r)) return "lava";
+        const inWater = (map.water || []).some((w) => inside(w, r)), deepWater = (map.water || []).some((w) => inside(w, -r * 0.6));
+        if (T && T.waterOnly) { if (!deepWater) return "land"; }
+        else if (inWater && !(T && T.water)) return "water";
         for (const k of (map.rocks || [])) { if (k[2] > 0 && dist(x, y, k[0] * S, k[1] * S) < k[2] * S + r) return "rock"; }
-        for (const t of towers) if (dist(x, y, t.x, t.y) < r + towerR(t) * 0.95) return "tower";
         return null;
       }
+      function blockMsg(why, T) { return why === "road" ? "Not on the road!" : why === "water" ? (T && T.name) + " can't swim — build on land" : why === "land" ? (T && T.name) + " lives in WATER — tap a pond" : why === "lava" ? "That's lava." : why === "tower" ? "Too close to another reptile" : "Can't build there"; }
       function towerR(t) { return S * (t.type === "trex" ? 0.05 : t.type === "croc" || t.type === "komodo" ? 0.04 : 0.033); }
 
       // ---------- run setup ----------
       function newRun(mapIdx, diffIdx, restore) {
         map = MAPS[mapIdx]; diff = DIFFS[diffIdx]; freeplay = false; won = false;
         paths = [buildPath(map.path)]; if (map.path2) paths.push(buildPath(map.path2));
-        towers = []; enemies = []; shots = []; fx = []; floaters = []; queue = []; selected = null; placing = null; waveActive = false; paused = false; speed = 1;
+        towers = []; enemies = []; shots = []; fx = []; floaters = []; queue = []; selected = null; placing = null; moving = null; waveActive = false; paused = false; speed = 1;
         cash = diff.start + meta.startCash; lives = diff.lives + meta.lives; wave = 1;
-        if (restore) { cash = restore.cash; lives = restore.lives; wave = restore.wave; freeplay = !!restore.freeplay; restore.towers.forEach((rt) => { const t = mkTower(rt.type, rt.x * S, rt.y * S); t.tiers = rt.tiers.slice(); t.mode = rt.mode || "first"; t.spent = rt.spent || TOWERS[rt.type].cost; towers.push(t); }); }
+        if (restore) { cash = restore.cash; lives = restore.lives; wave = restore.wave; freeplay = !!restore.freeplay; restore.towers.forEach((rt) => { const t = mkTower(rt.type, rt.x * S, rt.y * S); t.tiers = rt.tiers.slice(); t.mode = rt.mode || "first"; t.spent = rt.spent || TOWERS[rt.type].cost; t.bank = rt.bank || 0; if (rt.patrol != null && TOWERS[rt.type].fly) { t.patrol = rt.patrol; } towers.push(t); }); }
         statsDirty = true; screen = "game"; ctx.setScore(wave - 1); renderUI(); toast(map.name + " · " + diff.name + (restore ? " — run restored" : ""), map.accent);
       }
-      function saveRun() { save.run = { mapIdx: MAPS.indexOf(map), diffIdx: DIFFS.indexOf(diff), cash, lives, wave, freeplay, towers: towers.map((t) => ({ type: t.type, x: t.x / S, y: t.y / S, tiers: t.tiers, mode: t.mode, spent: t.spent })) }; persist(); }
-      function mkTower(type, x, y) { return { id: idSeq++, type, x, y, spawnT: 0, tiers: [0, 0, 0], mode: "first", cd: 0, angle: -Math.PI / 2, kills: 0, spent: TOWERS[type].cost, atkK: 0, stunT: 0, roarT: 0, ramp: 0, rampTgt: null, s: null, buff: 0, buffRate: 0, buffRange: 0 }; }
+      function saveRun() { save.run = { mapIdx: MAPS.indexOf(map), diffIdx: DIFFS.indexOf(diff), cash, lives, wave, freeplay, towers: towers.map((t) => ({ type: t.type, x: (t.patrol != null ? t.hx : t.x) / S, y: (t.patrol != null ? t.hy : t.y) / S, tiers: t.tiers, mode: t.mode, spent: t.spent, bank: t.bank || 0, patrol: t.patrol })) }; persist(); }
+      function mkTower(type, x, y) { return { id: idSeq++, type, x, y, hx: x, hy: y, patrol: null, pd: 0, pdir: 1, bank: 0, farmT: 0, spawnT: 0, tiers: [0, 0, 0], mode: "first", cd: 0, angle: -Math.PI / 2, kills: 0, spent: TOWERS[type].cost, atkK: 0, stunT: 0, roarT: 0, ramp: 0, rampTgt: null, s: null, buff: 0, buffRate: 0, buffRange: 0 }; }
 
       // ---------- stats ----------
-      function baseStats(type) { const T = TOWERS[type]; return { dmg: T.dmg, rate: T.rate, range: T.range, pierce: T.pierce || 1, crit: T.crit || 0, critMul: 2, air: !!T.air, armorPierce: T.armorPierce || 0, poison: T.poison || 0, poisonDur: 3, poisonArmor: false, cone: T.cone || 0, slow: T.slow || 0, slowHit: T.slowHit || 0, slowDur: 1.5, stun: T.stun || 0, stunHit: T.stunHit || 0, stunChance: T.stunChance || 0, chain: T.chain || 0, chainR: 0.13, chainRamp: false, meteors: T.meteors || 0, aoe: T.aoe || 0, bleed: T.bleed || 0, bleedDur: 3, bleedSpread: false, buff: T.buff || 0, buffRate: 0, buffRange: 0, cashWave: 0, cashBonus: 0, vuln: 0, bossMul: 1, slowedMul: 1, knockback: T.knockback || 0, airBonus: T.airBonus || 1, execute: 0, roar: T.roar || 0, roarDur: T.roarDur || 0, roarDmg: 0, ramp: false, airOnlyFar: false }; }
+      function baseStats(type) { const T = TOWERS[type]; return { dmg: T.dmg, rate: T.rate, range: T.range, pierce: T.pierce || 1, crit: T.crit || 0, critMul: 2, air: !!T.air, armorPierce: T.armorPierce || 0, poison: T.poison || 0, poisonDur: 3, poisonArmor: false, cone: T.cone || 0, slow: T.slow || 0, slowHit: T.slowHit || 0, slowDur: 1.5, stun: T.stun || 0, stunHit: T.stunHit || 0, stunChance: T.stunChance || 0, chain: T.chain || 0, chainR: 0.13, chainRamp: false, meteors: T.meteors || 0, aoe: T.aoe || 0, bleed: T.bleed || 0, bleedDur: 3, bleedSpread: false, buff: T.buff || 0, buffRate: 0, buffRange: 0, cashWave: 0, cashBonus: 0, vuln: 0, bossMul: 1, slowedMul: 1, knockback: T.knockback || 0, airBonus: T.airBonus || 1, execute: T.execute || 0, income: T.income || 0, trickle: 0, bank: 0, cap: 0, roar: T.roar || 0, roarDur: T.roarDur || 0, roarDmg: 0, ramp: false, airOnlyFar: false }; }
       function computeStats(t) { const s = baseStats(t.type); UP[t.type].forEach((path, pi) => { for (let k = 0; k < t.tiers[pi]; k++) path.tiers[k].m(s); }); s.range *= meta.rangeMul; if (s.poison) s.poison *= meta.dotMul; if (s.bleed) s.bleed *= meta.dotMul; t.s = s; }
       function recomputeAll() { towers.forEach(computeStats); auras = towers.filter((t) => t.s.buff || t.s.slow || t.s.vuln || t.s.cashBonus); statsDirty = false; }
       function towerRange(t) { return t.s.range * S * (1 + t.buffRange); }
       function upgradeCost(t, pi) { const tier = t.tiers[pi]; if (tier >= 3) return null; let c = UP[t.type][pi].tiers[tier].c; if (tier === 2 && meta.t3disc) c = Math.round(c * (1 - meta.t3disc)); return c; }
       function canUpgrade(t, pi) { if (t.tiers[pi] >= 3) return false; const used = t.tiers.filter((x, i) => x > 0 && i !== pi).length; return used < 2; }
       function upgrade(t, pi) { const c = upgradeCost(t, pi); if (c == null || !canUpgrade(t, pi)) { sndNo(); return; } if (cash < c) { toast("Not enough cash", "#ff8fa3"); sndNo(); return; } cash -= c; t.spent += c; t.tiers[pi]++; statsDirty = true; sndUpgrade(); burst(t.x, t.y, TOWERS[t.type].col, 26); burst(t.x, t.y, "#ffd36b", 12); ring(t.x, t.y, S * 0.12, "#ffd36b", 500); t.spawnT = 0.6; floaters.push({ x: t.x, y: t.y - S * 0.08, text: UP[t.type][pi].tiers[t.tiers[pi] - 1].n.toUpperCase() + "!", col: "#ffd36b", t: 0, big: true }); floaters.push({ x: t.x, y: t.y - S * 0.04, text: "-$" + c, col: "#ffd36b", t: 0 }); shakeT = Math.max(shakeT, 120); renderUI(); }
-      function sellTower(t) { const v = Math.round(t.spent * meta.sell); cash += v; towers = towers.filter((x) => x !== t); if (selected === t) selected = null; statsDirty = true; burst(t.x, t.y, "#ff8fa3", 18); ring(t.x, t.y, S * 0.08, "#ff8fa3", 400); floaters.push({ x: t.x, y: t.y - S * 0.03, text: "SOLD  +$" + v, col: "#ffd36b", t: 0, big: true }); sndSell(); renderUI(); }
+      function sellTower(t) { const v = Math.round(t.spent * meta.sell); cash += v; towers = towers.filter((x) => x !== t); if (selected === t) selected = null; if (moving === t) moving = null; statsDirty = true; burst(t.x, t.y, "#ff8fa3", 18); ring(t.x, t.y, S * 0.08, "#ff8fa3", 400); floaters.push({ x: t.x, y: t.y - S * 0.03, text: "SOLD  +$" + v, col: "#ffd36b", t: 0, big: true }); sndSell(); renderUI(); }
       function place(type, x, y) {
         const T = TOWERS[type]; if (!unlocked(type)) return; const r = S * 0.033;
         if (cash < T.cost) { toast("Not enough cash for " + T.name, "#ff8fa3"); sndNo(); return false; }
-        const why = blocked(x, y, r); if (why) { toast(why === "road" ? "Not on the road!" : why === "water" ? "Reptiles can't build in water" : why === "tower" ? "Too close to another reptile" : "Can't build there", "#ff8fa3"); sndNo(); return false; }
+        const why = blocked(x, y, r, type); if (why) { toast(blockMsg(why, T), "#ff8fa3"); sndNo(); return false; }
         cash -= T.cost; const t = mkTower(type, x, y); t.spawnT = 1; towers.push(t); statsDirty = true; if (!placing) selected = t; sndPlace(); A().tone(140, 0.12, { type: "triangle", vol: 0.08, glide: 60 }); burst(x, y, T.col, 22); burst(x, y, "#c8b89a", 10); ring(x, y, S * 0.09, T.col, 450); ring(x, y, S * 0.05, "#ffffff", 250); floaters.push({ x, y: y - S * 0.05, text: "-$" + T.cost, col: "#ffd36b", t: 0 }); floaters.push({ x, y: y - S * 0.09, text: T.name.toUpperCase() + " DEPLOYED", col: T.col, t: 0, big: true }); shakeT = Math.max(shakeT, 140); renderUI(); return true;
       }
 
@@ -491,6 +528,7 @@
         waveActive = false;
         const bonus = Math.round((100 + wave * 6) * diff.cash) + meta.waveCash + towers.reduce((s, t) => s + (t.s.cashWave || 0), 0);
         cash += bonus; floaters.push({ x: S / 2, y: S * 0.12, text: "wave " + wave + " cleared  +$" + bonus, col: "#ffd36b", t: 0, big: true });
+        towers.forEach((t) => { if (!t.s || !t.s.income) return; if (t.s.bank) { t.bank = Math.min(t.s.cap, Math.floor((t.bank + t.s.income) * (1 + t.s.bank))); floaters.push({ x: t.x, y: t.y - S * 0.06, text: "🥚 $" + t.bank + " stored", col: "#c9e07f", t: 0 }); } else { cash += t.s.income; floaters.push({ x: t.x, y: t.y - S * 0.06, text: "🥚 +$" + t.s.income, col: "#ffd36b", t: 0, big: true }); } burst(t.x, t.y, "#ffd36b", 12); });
         if (meta.heal10 && wave % 10 === 0) { lives += meta.heal10; toast("Second Wind: +" + meta.heal10 + " lives", "#7fe0a0"); }
         wave++; ctx.setScore(wave - 1); saveRun(); renderUI();
         if (wave === 41 && !freeplay) { won = true; endRun(true); return; }
@@ -518,6 +556,7 @@
         if (e.def.boss && s.bossMul > 1) d *= s.bossMul;
         if (e.slow > 0 && s.slowedMul > 1) d *= s.slowedMul;
         const vuln = inAura(e, "vuln"); if (vuln) d *= 1 + vuln;
+        if (s.execute && !e.def.boss && e.hp < e.hpMax * 0.9 + 1 && Math.random() < s.execute) { d = e.hp + e.armor + 999; floaters.push({ x: e.x, y: e.y - S * 0.04, text: "DRAGGED UNDER", col: "#9fe3ff", t: 0, big: true }); ring(e.x, e.y, S * 0.05, "#9fe3ff", 350); }
         if (s.ramp) { if (t.rampTgt === e) t.ramp = Math.min(2, t.ramp + 0.12); else { t.ramp = 0; t.rampTgt = e; } d *= 1 + t.ramp; }
         const eff = Math.max(1, d - Math.max(0, e.armor - s.armorPierce));
         e.hp -= eff; e.hurt = 90;
@@ -585,7 +624,9 @@
         // towers
         towers.forEach((t) => {
           if (t.atkK > 0) t.atkK = Math.max(0, t.atkK - dt / 160); if (t.spawnT > 0) t.spawnT = Math.max(0, t.spawnT - dt / 420);
+          if (t.patrol != null && paths[t.patrol]) { const P = paths[t.patrol]; t.pd += t.pdir * dt * S * 0.00013; if (t.pd >= P.len) { t.pd = P.len; t.pdir = -1; } if (t.pd <= 0) { t.pd = 0; t.pdir = 1; } const q = pointAt(P, t.pd); t.x = q.x + Math.sin(now * 0.002 + t.id) * S * 0.012; t.y = q.y + Math.cos(now * 0.0017 + t.id) * S * 0.012; }
           if (t.stunT > 0) { t.stunT -= dt; return; }
+          if (TOWERS[t.type].kind === "farm") { if (t.s.trickle && waveActive) { t.farmT += dt; if (t.farmT >= 10000) { t.farmT = 0; cash += t.s.trickle; floaters.push({ x: t.x, y: t.y - S * 0.05, text: "+$" + t.s.trickle, col: "#ffd36b", t: 0, small: true }); burst(t.x, t.y, "#ffd36b", 5); } } return; }
           if (TOWERS[t.type].kind === "aura") return;
           if (t.s.roar) { t.roarT += dt; if (t.roarT >= t.s.roar * 1000 && enemies.some((e) => !e.dead && dist(e.x, e.y, t.x, t.y) <= towerRange(t) * 1.3)) { t.roarT = 0; roar(t); } }
           t.cd -= dt * (1 + t.buffRate);
@@ -655,14 +696,21 @@
       function drawTowers() {
         towers.forEach((t) => {
           const r = towerR(t), tier = Math.max.apply(null, t.tiers);
-          g.fillStyle = "rgba(0,0,0,0.35)"; ell(g, t.x, t.y + r * 0.9, r * 1.4, r * 0.55); g.fill();
+          const fly = TOWERS[t.type].fly, lift = fly ? r * 1.1 + Math.sin(now * 0.004 + t.id) * r * 0.25 : 0;
+          if (moving === t) g.globalAlpha = 0.45;
+          g.fillStyle = fly ? "rgba(0,0,0,0.22)" : "rgba(0,0,0,0.35)"; ell(g, t.x, t.y + r * 0.9, r * (fly ? 1.1 : 1.4), r * (fly ? 0.4 : 0.55)); g.fill();
+          if (t.patrol != null) { g.strokeStyle = rgba(TOWERS[t.type].col, 0.25); g.lineWidth = S * 0.004; g.setLineDash([S * 0.012, S * 0.012]); g.lineDashOffset = -now * 0.02; strokePath(paths[t.patrol]); g.setLineDash([]); }
           if (TOWERS[t.type].kind === "aura" || t.s.buff) { g.strokeStyle = rgba(TOWERS[t.type].col, 0.18 + 0.06 * Math.sin(now * 0.003)); g.lineWidth = 1.5; g.setLineDash([S * 0.01, S * 0.012]); g.beginPath(); g.arc(t.x, t.y, towerRange(t), 0, TAU); g.stroke(); g.setLineDash([]); }
-          g.save(); g.translate(t.x, t.y); if (t.spawnT > 0) { const k = t.spawnT, bounce = 1 + Math.sin((1 - k) * Math.PI) * 0.35 + k * 0.9; g.translate(0, -k * k * S * 0.12); g.scale(bounce, bounce); g.globalAlpha = 1 - k * 0.3; } g.rotate(t.angle); drawReptile(g, t.type, r, now + t.id * 331, tier, t.atkK); g.restore();
+          g.save(); g.translate(t.x, t.y - lift); if (t.spawnT > 0) { const k = t.spawnT, bounce = 1 + Math.sin((1 - k) * Math.PI) * 0.35 + k * 0.9; g.translate(0, -k * k * S * 0.12); g.scale(bounce, bounce); g.globalAlpha = 1 - k * 0.3; } g.rotate(t.angle); drawReptile(g, t.type, r, now + t.id * 331, tier, t.atkK); g.restore();
           if (t.spawnT > 0) { g.strokeStyle = rgba(TOWERS[t.type].col, t.spawnT); g.lineWidth = S * 0.006; g.beginPath(); g.arc(t.x, t.y, r * (1.2 + (1 - t.spawnT) * 2.5), 0, TAU); g.stroke(); }
           if (t.stunT > 0) { g.fillStyle = "#ffd36b"; for (let k = 0; k < 3; k++) { const a = now * 0.006 + k * 2.1; dot(g, t.x + Math.cos(a) * r * 1.6, t.y - r * 1.6 + Math.sin(a) * r * 0.4, S * 0.005); } }
           if (t.buff) { g.fillStyle = rgba("#ffd36b", 0.9); g.font = "800 " + Math.round(S * 0.016) + "px system-ui"; g.textAlign = "center"; g.fillText("▲", t.x + r * 1.5, t.y - r * 1.3); }
+          if (t.bank > 0) { g.save(); g.fillStyle = "rgba(10,8,20,0.7)"; const txt = "$" + t.bank, fs = Math.round(S * 0.017); g.font = "800 " + fs + "px system-ui"; const tw = g.measureText(txt).width; rr(g, t.x - tw / 2 - fs * 0.5, t.y - r * 2.4 - fs * 0.7, tw + fs, fs * 1.4, fs * 0.7); g.fill(); g.fillStyle = "#ffd36b"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(txt, t.x, t.y - r * 2.4); g.restore(); }
+          g.globalAlpha = 1;
         });
         if (selected) { const R = towerRange(selected); g.strokeStyle = rgba(TOWERS[selected.type].col, 0.7); g.lineWidth = 2; g.beginPath(); g.arc(selected.x, selected.y, R, 0, TAU); g.stroke(); g.fillStyle = rgba(TOWERS[selected.type].col, 0.06); g.fill(); }
+        if (moving && !placing) { const T = TOWERS[moving.type]; g.save(); g.fillStyle = "rgba(10,8,20,0.75)"; rr(g, S * 0.18, S * 0.02, S * 0.64, S * 0.06, S * 0.03); g.fill(); g.strokeStyle = rgba(T.col, 0.6 + 0.3 * Math.sin(now * 0.006)); g.lineWidth = 2; g.stroke(); g.fillStyle = T.col; g.font = "800 " + Math.round(S * 0.024) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("MOVE " + T.name.toUpperCase() + "  ·  tap the new spot  ·  free", S / 2, S * 0.05); g.restore(); }
+        if (moving && hover) { const t = moving, r = towerR(t), R = towerRange(t); g.save(); g.setLineDash([S * 0.01, S * 0.01]); g.strokeStyle = rgba(TOWERS[t.type].col, 0.5); g.lineWidth = 2; g.beginPath(); g.moveTo(t.x, t.y); g.lineTo(hover.x, hover.y); g.stroke(); g.setLineDash([]); g.globalAlpha = 0.85; g.strokeStyle = hoverValid ? rgba("#7fe0a0", 0.8) : rgba("#ff6b6b", 0.8); g.fillStyle = hoverValid ? rgba("#7fe0a0", 0.08) : rgba("#ff6b6b", 0.1); g.beginPath(); g.arc(hover.x, hover.y, R, 0, TAU); g.fill(); g.stroke(); g.globalAlpha = hoverValid ? 0.75 : 0.4; g.translate(hover.x, hover.y); g.rotate(-Math.PI / 2); drawReptile(g, t.type, r, now, Math.max.apply(null, t.tiers), 0); g.restore(); }
         if (placing) { const T = TOWERS[placing]; g.save(); g.fillStyle = "rgba(10,8,20,0.75)"; rr(g, S * 0.18, S * 0.02, S * 0.64, S * 0.06, S * 0.03); g.fill(); g.strokeStyle = rgba(T.col, 0.6 + 0.3 * Math.sin(now * 0.006)); g.lineWidth = 2; g.stroke(); g.fillStyle = T.col; g.font = "800 " + Math.round(S * 0.024) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("PLACE " + T.name.toUpperCase() + "  ·  $" + T.cost + "  ·  tap beside the road", S / 2, S * 0.05); g.restore(); }
         if (placing && hover) { const T = TOWERS[placing], r = S * 0.033, R = baseStats(placing).range * meta.rangeMul * S; g.save(); g.globalAlpha = 0.85; g.strokeStyle = hoverValid ? rgba("#7fe0a0", 0.8) : rgba("#ff6b6b", 0.8); g.fillStyle = hoverValid ? rgba("#7fe0a0", 0.08) : rgba("#ff6b6b", 0.1); g.lineWidth = 2; g.beginPath(); g.arc(hover.x, hover.y, R, 0, TAU); g.fill(); g.stroke(); g.globalAlpha = hoverValid ? 0.75 : 0.4; g.translate(hover.x, hover.y); g.rotate(-Math.PI / 2); drawReptile(g, placing, r, now, 0, 0); g.restore(); }
       }
@@ -729,19 +777,28 @@
       function iconCanvas(type, size) { const c = document.createElement("canvas"); const d = window.devicePixelRatio || 1; c.width = c.height = Math.round(size * d); c.style.width = c.style.height = size + "px"; const gg = c.getContext("2d"); gg.setTransform(d, 0, 0, d, 0, 0); gg.translate(size / 2, size / 2); gg.rotate(-Math.PI / 2); drawReptile(gg, type, size * 0.2, 0, 0, 0); return c; }
       function bugCanvas(type, size) { const c = document.createElement("canvas"); const d = window.devicePixelRatio || 1; c.width = c.height = Math.round(size * d); c.style.width = c.style.height = size + "px"; const gg = c.getContext("2d"); gg.setTransform(d, 0, 0, d, 0, 0); gg.translate(size / 2, size / 2); drawBug(gg, type, size * (ENEMIES[type].boss ? 0.12 : 0.22), 0, 0, false); return c; }
       function renderUI() { renderHud(); renderPanel(); }
+      // The top bar is built ONCE and then patched in place. (It used to be wiped + rebuilt every 400 ms and on every
+      // kill, which destroyed the button between your press and the click — that's why Pause/auto/speed felt laggy.)
       function renderHud() {
         if (!topbar) return;
         if (screen !== "game") { topbar.style.display = "none"; return; } topbar.style.display = "";
-        topbar.innerHTML = "";
-        const L = el("div", "cb-stat"); L.innerHTML = "<b>♥ " + lives + "</b><small>lives</small>"; const C = el("div", "cb-stat"); C.innerHTML = "<b>$" + Math.floor(cash) + "</b><small>cash</small>"; const Wv = el("div", "cb-stat"); Wv.innerHTML = "<b>" + Math.min(wave, 999) + (freeplay || wave > 40 ? "" : " / 40") + "</b><small>wave</small>";
-        topbar.appendChild(L); topbar.appendChild(C); topbar.appendChild(Wv);
-        const ctr = el("div", "cb-ctr");
+        if (!hud || hud.topbar !== topbar) {
+          topbar.innerHTML = "";
+          const L = el("div", "cb-stat"), C = el("div", "cb-stat"), Wv = el("div", "cb-stat"); topbar.appendChild(L); topbar.appendChild(C); topbar.appendChild(Wv);
+          const ctr = el("div", "cb-ctr");
+          const start = el("button", "btn cb-start"); start.onclick = () => { if (waveActive) { if (diff.id === "hard" && !paused) { toast("Hard mode: no pausing while bugs are on the road", "#ff8fa3"); sndNo(); return; } paused = !paused; sndClick(); } else { paused = false; startWave(); } renderHud(); }; ctr.appendChild(start);
+          const spd = el("div", "cb-speed"); const sps = [1, 2, 3].map((v) => { const b = el("button", "cb-sp", v + "×"); b.onclick = () => { if (b.disabled) { toast("Unlock 3× in the skill tree", "#c98cff"); return; } speed = v; sndClick(); renderHud(); }; spd.appendChild(b); return b; }); ctr.appendChild(spd);
+          const auto = el("button", "cb-auto", "auto"); auto.title = "Start the next wave automatically"; auto.onclick = () => { autoNext = !autoNext; sndClick(); toast(autoNext ? "Auto-start ON — next wave begins by itself" : "Auto-start off", autoNext ? "#7fe0a0" : "#e6ecf5"); renderHud(); }; ctr.appendChild(auto);
+          const menu = el("button", "cb-menu", "☰"); menu.title = "Maps / skill tree (run is saved between waves)"; menu.onclick = () => { if (diff.id === "hard" && waveActive) { toast("Hard mode: finish the wave first", "#ff8fa3"); sndNo(); return; } paused = true; saveRun(); showMenu(); }; ctr.appendChild(menu);
+          topbar.appendChild(ctr);
+          hud = { topbar, L, C, Wv, start, sps, auto, menu, cache: {} };
+        }
+        const H = hud, set = (node, key, html) => { if (H.cache[key] !== html) { H.cache[key] = html; node.innerHTML = html; } }, cls = (node, key, c) => { if (H.cache[key] !== c) { H.cache[key] = c; node.className = c; } };
+        set(H.L, "L", "<b>♥ " + lives + "</b><small>lives</small>"); set(H.C, "C", "<b>$" + Math.floor(cash) + "</b><small>cash</small>"); set(H.Wv, "W", "<b>" + Math.min(wave, 999) + (freeplay || wave > 40 ? "" : " / 40") + "</b><small>wave</small>");
         const hardLock = diff.id === "hard" && waveActive && !paused;
-        const start = el("button", "btn cb-start" + (waveActive ? " on" : "") + (hardLock ? " nolock" : ""), waveActive ? (paused ? "▶ Resume" : hardLock ? "🔥 No pause (Hard)" : "⏸ Pause") : "▶ Start wave " + wave); start.onclick = () => { if (waveActive) { if (hardLock) { toast("Hard mode: no pausing while bugs are on the road", "#ff8fa3"); sndNo(); return; } paused = !paused; } else { paused = false; startWave(); } renderHud(); }; ctr.appendChild(start);
-        const spd = el("div", "cb-speed"); [1, 2, 3].forEach((v) => { const b = el("button", "cb-sp" + (speed === v ? " on" : ""), v + "×"); b.disabled = v === 3 && !meta.speed3; b.title = v === 3 && !meta.speed3 ? "Unlock 3× in the skill tree" : ""; b.onclick = () => { speed = v; renderHud(); }; spd.appendChild(b); }); ctr.appendChild(spd);
-        const auto = el("button", "cb-auto" + (autoNext ? " on" : ""), "auto"); auto.title = "Start the next wave automatically"; auto.onclick = () => { autoNext = !autoNext; renderHud(); }; ctr.appendChild(auto);
-        const menu = el("button", "cb-menu", "☰"); menu.title = "Maps / skill tree (run is saved between waves)"; menu.onclick = () => { if (diff.id === "hard" && waveActive) { toast("Hard mode: finish the wave first", "#ff8fa3"); sndNo(); return; } paused = true; saveRun(); showMenu(); }; ctr.appendChild(menu);
-        topbar.appendChild(ctr);
+        cls(H.start, "sc", "btn cb-start" + (waveActive ? " on" : "") + (hardLock ? " nolock" : "")); set(H.start, "st", waveActive ? (paused ? "▶ Resume" : hardLock ? "🔥 No pause (Hard)" : "⏸ Pause") : "▶ Start wave " + wave);
+        H.sps.forEach((b, i) => { const v = i + 1, dis = v === 3 && !meta.speed3; cls(b, "sp" + v, "cb-sp" + (speed === v ? " on" : "") + (dis ? " dis" : "")); if (b.disabled !== dis) { b.disabled = dis; b.title = dis ? "Unlock 3× in the skill tree" : ""; } });
+        cls(H.auto, "au", "cb-auto" + (autoNext ? " on" : ""));
       }
       function renderPanel() {
         if (!panel) return;
@@ -750,7 +807,7 @@
         if (selected) {
           const t = selected, T = TOWERS[t.type], s = t.s || baseStats(t.type);
           const head = el("div", "cb-sel-head"); head.appendChild(iconCanvas(t.type, 48)); const hb = el("div"); hb.appendChild(el("b", null, T.name)); hb.appendChild(el("small", null, T.desc)); head.appendChild(hb); const x = el("button", "cb-x", "✕"); x.onclick = () => { selected = null; renderPanel(); }; head.appendChild(x); panel.appendChild(head);
-          const st = el("div", "cb-stats"); const kind = T.kind; st.innerHTML = (kind === "aura" ? "<span>slow <b>" + Math.round(s.slow * 100) + "%</b></span><span>range <b>" + Math.round(s.range * 100) + "</b></span>" : "<span>dmg <b>" + Math.round(s.dmg * meta.dmgMul * (1 + t.buff)) + "</b></span><span>rate <b>" + (s.rate * (1 + t.buffRate)).toFixed(1) + "/s</b></span><span>range <b>" + Math.round(s.range * 100 * (1 + t.buffRange)) + "</b></span>") + (s.pierce > 1 ? "<span>pierce <b>" + Math.min(99, s.pierce) + "</b></span>" : "") + (s.crit ? "<span>crit <b>" + Math.round(s.crit * 100) + "%</b></span>" : "") + (s.poison ? "<span>poison <b>" + Math.round(s.poison) + "/s</b></span>" : "") + (s.bleed ? "<span>bleed <b>" + Math.round(s.bleed) + "/s</b></span>" : "") + "<span>kills <b>" + t.kills + "</b></span>" + (T.air ? "" : "<span class='cb-warn'>can't hit flyers</span>"); panel.appendChild(st);
+          const st = el("div", "cb-stats"); const kind = T.kind; st.innerHTML = (kind === "farm" ? "<span>income <b>$" + s.income + "/wave</b></span>" + (s.trickle ? "<span>mid-wave <b>$" + s.trickle + "/10s</b></span>" : "") + (s.bank ? "<span>interest <b>" + Math.round(s.bank * 100) + "%</b></span><span>stored <b>$" + (t.bank || 0) + "</b></span>" : "") + (s.cashBonus ? "<span>kills nearby <b>+" + Math.round(s.cashBonus * 100) + "%</b></span><span>range <b>" + Math.round(s.range * 100) + "</b></span>" : "") : kind === "aura" ? "<span>slow <b>" + Math.round(s.slow * 100) + "%</b></span><span>range <b>" + Math.round(s.range * 100) + "</b></span>" : "<span>dmg <b>" + Math.round(s.dmg * meta.dmgMul * (1 + t.buff)) + "</b></span><span>rate <b>" + (s.rate * (1 + t.buffRate)).toFixed(1) + "/s</b></span><span>range <b>" + Math.round(s.range * 100 * (1 + t.buffRange)) + "</b></span>") + (s.pierce > 1 ? "<span>pierce <b>" + Math.min(99, s.pierce) + "</b></span>" : "") + (s.crit ? "<span>crit <b>" + Math.round(s.crit * 100) + "%</b></span>" : "") + (s.poison ? "<span>poison <b>" + Math.round(s.poison) + "/s</b></span>" : "") + (s.bleed ? "<span>bleed <b>" + Math.round(s.bleed) + "/s</b></span>" : "") + "<span>kills <b>" + t.kills + "</b></span>" + (T.air ? "" : "<span class='cb-warn'>can't hit flyers</span>"); panel.appendChild(st);
           UP[t.type].forEach((path, pi) => {
             const row = el("div", "cb-path" + (t.tiers[pi] ? " has" : "") + (canUpgrade(t, pi) ? "" : " locked"));
             const lab = el("div", "cb-path-name"); lab.innerHTML = "<b>" + path.name + "</b><i>" + "●".repeat(t.tiers[pi]) + "○".repeat(3 - t.tiers[pi]) + "</i>"; row.appendChild(lab);
@@ -761,8 +818,11 @@
             panel.appendChild(row);
           });
           const foot = el("div", "cb-sel-foot");
-          if (kind !== "aura") { const tg = el("button", "cb-target", "target: " + t.mode); tg.onclick = () => { const modes = ["first", "last", "strong", "close"]; t.mode = modes[(modes.indexOf(t.mode) + 1) % modes.length]; renderPanel(); }; foot.appendChild(tg); }
-          const sell = el("button", "cb-sell", "sell $" + Math.round(t.spent * meta.sell)); sell.onclick = () => sellTower(t); foot.appendChild(sell); panel.appendChild(foot);
+          if (kind === "farm" && t.bank > 0) { const col = el("button", "cb-collect", "🥚 collect $" + t.bank); col.onclick = () => collectBank(t); panel.appendChild(col); }
+          if (T.fly) { const pb = el("button", "cb-target cb-patrol" + (t.patrol != null ? " on" : ""), t.patrol == null ? "✈ patrol a lane" : "✈ patrolling lane " + (t.patrol + 1) + (t.patrol + 1 < paths.length ? " · next lane" : " · stop")); pb.title = "Fly back and forth above a road, attacking everything on it"; pb.onclick = () => { if (t.patrol == null) { t.hx = t.x; t.hy = t.y; t.patrol = 0; t.pd = 0; t.pdir = 1; toast(T.name + " is patrolling lane 1", T.col); } else if (t.patrol + 1 < paths.length) { t.patrol++; t.pd = 0; toast(T.name + " switched to lane " + (t.patrol + 1), T.col); } else { t.patrol = null; t.x = t.hx; t.y = t.hy; t.spawnT = 0.6; } sndClick(); renderPanel(); }; panel.appendChild(pb); }
+          const mv = el("button", "cb-target cb-move" + (moving === t ? " on" : ""), moving === t ? "✕ cancel move" : "⇄ move"); mv.title = "Pick this reptile up and put it somewhere else — free"; mv.onclick = () => { if (moving === t) { moving = null; renderPanel(); return; } if (waveActive && !paused) { toast(diff.id === "hard" ? "Hard mode: move reptiles between waves" : "Pause first, then move", "#ff8fa3"); sndNo(); return; } if (t.patrol != null) { toast("Stop the patrol first", "#ff8fa3"); sndNo(); return; } moving = t; placing = null; sndPick(); toast("Tap where " + T.name + " should go · right-click cancels", T.col); renderPanel(); };
+          if (kind !== "aura" && kind !== "farm") { const tg = el("button", "cb-target", "target: " + t.mode); tg.onclick = () => { const modes = ["first", "last", "strong", "close"]; t.mode = modes[(modes.indexOf(t.mode) + 1) % modes.length]; renderPanel(); }; foot.appendChild(tg); }
+          foot.appendChild(mv); const sell = el("button", "cb-sell", "sell $" + Math.round(t.spent * meta.sell)); sell.onclick = () => sellTower(t); foot.appendChild(sell); panel.appendChild(foot);
           return;
         }
         const ttl = el("div", "cb-shop-title" + (placing ? " placing" : "")); ttl.innerHTML = placing ? "<b>" + TOWERS[placing].name.toUpperCase() + " READY</b> — tap the ground beside the road · <u>cancel</u>" : "Reptiles — pick one, then tap the map"; if (placing) ttl.querySelector("u").onclick = () => { placing = null; renderPanel(); }; panel.appendChild(ttl);
@@ -770,8 +830,8 @@
         Object.keys(TOWERS).forEach((type, i) => {
           const T = TOWERS[type], ok = unlocked(type), card = el("button", "cb-card" + (placing === type ? " on" : "") + (!ok ? " lock" : cash < T.cost ? " poor" : " can")); card.style.setProperty("--tc", T.col);
           card.appendChild(iconCanvas(type, 56)); const nm = el("div", "cb-card-name"); const pip = (v, max) => { let o = ""; for (let k = 0; k < 4; k++) o += "<i class='" + (v / max > k / 4 ? "on" : "") + "'></i>"; return o; }; const bs = baseStats(type); const dps = bs.rate ? bs.dmg * bs.rate * (bs.pierce > 1 ? 1.5 : 1) + (bs.poison || 0) : 0;
-          nm.innerHTML = "<b>" + T.name + "</b><em>" + (ok ? "$" + T.cost : T.rebirth ? "✦ rebirth " + T.rebirth : "🥚 skill tree") + "</em><span class='cb-pips'><label>dmg</label>" + pip(T.kind === "aura" ? 0 : dps, 60) + "<label>rng</label>" + pip(bs.range, 0.34) + "<label>" + (T.kind === "aura" ? "slow" : "spd") + "</label>" + pip(T.kind === "aura" ? bs.slow : bs.rate, T.kind === "aura" ? 0.7 : 2.4) + "</span>"; card.appendChild(nm); card.title = T.desc + (T.air ? "" : " · cannot hit flyers"); card.appendChild(el("kbd", null, String(i + 1)));
-          if (!T.air) card.appendChild(el("div", "cb-noair", "ground only"));
+          nm.innerHTML = "<b>" + T.name + "</b><em>" + (ok ? "$" + T.cost : T.rebirth ? "✦ rebirth " + T.rebirth : "🥚 skill tree") + "</em><span class='cb-pips'><label>" + (T.kind === "farm" ? "$/wave" : "dmg") + "</label>" + pip(T.kind === "aura" ? 0 : T.kind === "farm" ? bs.income : dps, T.kind === "farm" ? 400 : 60) + "<label>rng</label>" + pip(bs.range, 0.34) + "<label>" + (T.kind === "aura" ? "slow" : "spd") + "</label>" + pip(T.kind === "aura" ? bs.slow : bs.rate, T.kind === "aura" ? 0.7 : 2.4) + "</span>"; card.appendChild(nm); card.title = T.desc + (T.air ? "" : " · cannot hit flyers"); card.appendChild(el("kbd", null, String(i + 1)));
+          const tag = T.waterOnly ? "water only" : T.fly ? "flies anywhere" : T.kind === "farm" ? "money maker" : T.water ? "land + water" : !T.air ? "ground only" : null; if (tag) { const tg = el("div", "cb-noair" + (T.waterOnly || T.water ? " wat" : T.fly ? " fly" : T.kind === "farm" ? " gold" : ""), tag); card.appendChild(tg); }
           if (T.rebirth) card.classList.add("rb");
           card.onclick = () => { if (!ok) { toast(T.rebirth ? T.name + " needs rebirth " + T.rebirth + " (skill tree)" : "Unlock " + T.name + " in the skill tree", "#c98cff"); sndNo(); return; } if (cash < T.cost && placing !== type) { toast("Need $" + (T.cost - Math.floor(cash)) + " more for " + T.name, "#ff8fa3"); sndNo(); card.classList.add("shake"); setTimeout(() => card.classList.remove("shake"), 400); return; } placing = placing === type ? null : type; selected = null; if (placing) sndPick(); renderPanel(); };
           grid.appendChild(card);
@@ -976,12 +1036,15 @@
       function canvasPoint(intent) { return { x: intent.x, y: intent.y }; }
       function onDown(x, y, button) {
         if (screen !== "game") return;
-        if (button === 2) { placing = null; selected = null; renderPanel(); return; }
+        if (button === 2) { placing = null; moving = null; selected = null; renderPanel(); return; }
+        if (moving) { const t = moving, T = TOWERS[t.type]; const why = blocked(x, y, towerR(t), t.type, t); if (why) { toast(blockMsg(why, T), "#ff8fa3"); sndNo(); return; } burst(t.x, t.y, "#c8b89a", 8); ring(t.x, t.y, S * 0.05, T.col, 250); t.x = x; t.y = y; t.hx = x; t.hy = y; t.spawnT = 1; statsDirty = true; burst(x, y, T.col, 16); ring(x, y, S * 0.08, T.col, 400); floaters.push({ x, y: y - S * 0.07, text: T.name.toUpperCase() + " MOVED", col: T.col, t: 0, big: true }); sndPlace(); moving = null; selected = t; renderPanel(); return; }
         if (placing) { if (place(placing, x, y) && cash < TOWERS[placing].cost) { placing = null; toast("Out of cash — sell or clear a wave", "#ffd36b"); } renderPanel(); return; }
         let best = null, bd = 1e9; towers.forEach((t) => { const d = dist(x, y, t.x, t.y); if (d < towerR(t) * 1.6 && d < bd) { bd = d; best = t; } });
+        if (best && best.bank > 0) collectBank(best);
         if (best !== selected) { selected = best; if (best) { sndClick(); ring(best.x, best.y, towerR(best) * 2.2, TOWERS[best.type].col, 300); } renderPanel(); }
       }
-      function onMove(x, y) { hover = { x, y }; if (placing) hoverValid = !blocked(x, y, S * 0.033); }
+      function collectBank(t) { const v = t.bank; if (!v) return; t.bank = 0; cash += v; floaters.push({ x: t.x, y: t.y - S * 0.06, text: "🥚 +$" + v + " collected", col: "#ffd36b", t: 0, big: true }); burst(t.x, t.y, "#ffd36b", 20); ring(t.x, t.y, S * 0.08, "#ffd36b", 400); sndSell(); renderUI(); }
+      function onMove(x, y) { hover = { x, y }; if (placing) hoverValid = !blocked(x, y, S * 0.033, placing); else if (moving) hoverValid = !blocked(x, y, towerR(moving), moving.type, moving); }
 
       function resize() {
         const wide = window.innerWidth >= 900;
@@ -996,7 +1059,7 @@
         mount(stage, c) {
           stageEl = stage; ctx = c; reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
           styleEl = document.createElement("style"); styleEl.textContent = CSS; document.head.appendChild(styleEl);
-          wrap = el("div", "cb"); const left = el("div", "cb-left"); topbar = el("div", "cb-top"); canvas = document.createElement("canvas"); canvas.className = "cb-canvas"; g = canvas.getContext("2d");
+          wrap = el("div", "cb"); const left = el("div", "cb-left"); topbar = el("div", "cb-top"); hud = null; canvas = document.createElement("canvas"); canvas.className = "cb-canvas"; g = canvas.getContext("2d");
           left.appendChild(topbar); left.appendChild(canvas); toastEl = el("div", "cb-toast"); left.appendChild(toastEl); wrap.appendChild(left);
           panel = el("div", "cb-panel"); wrap.appendChild(panel);
           overlay = el("div", "cb-overlay"); wrap.appendChild(overlay);
@@ -1009,11 +1072,11 @@
           keyFn = (e) => { if (screen !== "game") return; if (e.key === " ") { e.preventDefault(); if (waveActive) { if (diff.id === "hard" && !paused) { toast("Hard mode: no pausing while bugs are on the road", "#ff8fa3"); return; } paused = !paused; } else startWave(); renderHud(); } else if (/^[1-9]$/.test(e.key)) { const type = Object.keys(TOWERS)[+e.key - 1]; if (type && unlocked(type)) { placing = placing === type ? null : type; selected = null; renderPanel(); } } else if (e.key === "Escape" || e.key.toLowerCase() === "q") { placing = null; selected = null; renderPanel(); } else if (e.key.toLowerCase() === "s" && selected) sellTower(selected); };
           window.addEventListener("keydown", keyFn);
           showMenu();
-          Arcade._cb = { get: () => ({ screen, map: map && map.id, diff: diff && diff.id, cash, lives, wave, waveActive, towers: towers.map((t) => ({ type: t.type, x: t.x, y: t.y, tiers: t.tiers, kills: t.kills })), enemies: enemies.length, S, eggs: save.eggs, nodes: Object.keys(save.nodes), paths: paths.map((P) => P.pts) }), cheat: (o) => { if (o.cash != null) cash = o.cash; if (o.eggs != null) { save.eggs = o.eggs; persist(); } if (o.wave != null) wave = o.wave; if (o.rebirth != null) { save.rebirth = o.rebirth; meta = metaFromNodes(save.nodes, save.rebirth); persist(); } if (o.allNodes) { TREE.forEach((nd) => { save.nodes[nd.id] = true; }); meta = metaFromNodes(save.nodes, save.rebirth); persist(); } renderUI(); }, rebirth: () => doRebirth(), treeFx: () => tree && tree.fx.length, elites: () => enemies.filter((e) => e.elite).map((e) => e.elite), act: { startWave, place, upgrade: (i, pi) => upgrade(towers[i], pi), select: (i) => { selected = towers[i]; renderPanel(); }, newRun, showMenu, showTree, setSpeed: (v) => { speed = v; }, endRun, selectNode, roots: TREE.filter((nd) => !nd.req).map((nd) => nd.id) } };
+          Arcade._cb = { get: () => ({ screen, map: map && map.id, diff: diff && diff.id, cash, lives, wave, waveActive, towers: towers.map((t) => ({ type: t.type, x: t.x, y: t.y, tiers: t.tiers, kills: t.kills, bank: t.bank, patrol: t.patrol })), enemies: enemies.length, speed, paused, autoNext, water: map ? map.water : [], S, eggs: save.eggs, nodes: Object.keys(save.nodes), paths: paths.map((P) => P.pts) }), cheat: (o) => { if (o.cash != null) cash = o.cash; if (o.eggs != null) { save.eggs = o.eggs; persist(); } if (o.wave != null) wave = o.wave; if (o.rebirth != null) { save.rebirth = o.rebirth; meta = metaFromNodes(save.nodes, save.rebirth); persist(); } if (o.allNodes) { TREE.forEach((nd) => { save.nodes[nd.id] = true; }); meta = metaFromNodes(save.nodes, save.rebirth); persist(); } renderUI(); }, rebirth: () => doRebirth(), treeFx: () => tree && tree.fx.length, elites: () => enemies.filter((e) => e.elite).map((e) => e.elite), act: { startWave, place, upgrade: (i, pi) => upgrade(towers[i], pi), select: (i) => { selected = towers[i]; renderPanel(); }, newRun, showMenu, showTree, setSpeed: (v) => { speed = v; }, endRun, selectNode, roots: TREE.filter((nd) => !nd.req).map((nd) => nd.id) } };
           draw();
         },
         handleInput(intent) { if (intent.type !== "point" || (intent.el && intent.el !== canvas)) return; if (intent.phase === "move") onMove(intent.x, intent.y); else if (intent.phase === "down") onDown(intent.x, intent.y, intent.button); },
-        tick(dt) { update(dt); draw(); if (screen === "tree") drawTree(); if (screen === "game" && !paused && (now % 400) < 20) renderHud(); },
+        tick(dt) { update(dt); draw(); if (screen === "tree") drawTree(); if (screen === "game") renderHud(); },
         getScore() { return Math.max(0, wave - 1); },
         teardown() {
           if (screen === "game" && !won) saveRun();
@@ -1074,6 +1137,9 @@
 .cb-rbgain{display:flex;align-items:center;gap:14px;text-align:left;background:rgba(255,255,255,.04);border-radius:14px;padding:10px;margin:10px 0}.cb-rbgain b{display:block;font-size:18px}.cb-rbgain small{display:block;opacity:.75;font-size:13px}.cb-rbgain i{display:block;font-style:normal;color:#7fe0a0;font-weight:700;font-size:13px;margin-top:4px}
 .cb-rblose{font-size:13px;opacity:.85;line-height:1.6;margin-bottom:10px}.cb-rblose span{color:#ff8fa3;font-weight:700}.cb-rblose span.apoc{color:#ffd36b}.cb-rbgo{background:linear-gradient(135deg,#ffd36b,#ff8f3d)!important;color:#0e0c1e!important;font-size:16px!important}
 .cb-rbline{text-align:center;color:#ffd36b;font-size:13px;margin:-4px 0 10px;opacity:.9}.cb-diff.apoc.on,.cb-diff.apoc:not(.locked){border-color:rgba(255,107,107,.6)}.cb-diff.locked{opacity:.45}.cb-card.rb{border-color:rgba(255,211,107,.35)}.cb-card.rb.lock .cb-card-name em{background:rgba(255,211,107,.18);color:#ffd36b}
+.cb-collect{width:100%;margin:6px 0 2px;background:linear-gradient(135deg,#ffd36b,#c9e07f);color:#0e0c1e;border:0;border-radius:10px;padding:9px;font:inherit;font-weight:800;cursor:pointer;animation:cbpulse 1.2s infinite;--tc:#ffd36b}
+.cb-patrol{width:100%;margin-top:6px;background:rgba(116,185,255,.08)!important;border-color:rgba(116,185,255,.35)!important}.cb-patrol.on{background:rgba(116,185,255,.22)!important;border-color:#74b9ff!important;color:#fff}.cb-move.on{background:rgba(255,211,107,.2)!important;border-color:#ffd36b!important}
+.cb-noair.wat{color:#74b9ff}.cb-noair.fly{color:#c98cff}.cb-noair.gold{color:#ffd36b}.cb-sp.dis{opacity:.4}
 .cb-end{text-align:center}.cb-end h2{margin:0 0 6px}.cb-endline{opacity:.8;margin:0 0 10px}.cb-endeggs b{font-size:28px;color:#ffd36b;display:block}.cb-endeggs small{opacity:.6}.cb-end .btn-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px}
 @media (max-width:899px){.cb-panel{padding:10px}.cb-top{font-size:13px}}
 `;
