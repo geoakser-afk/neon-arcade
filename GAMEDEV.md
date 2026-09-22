@@ -127,10 +127,27 @@ A regular game can ALSO appear in Chris's hub without being kid-only by providin
 - Keep the file self-contained (~250–450 lines), same lifecycle + teardown rules as every other game.
 - A big star counter (★ n) at the top is the whole HUD; also call `ctx.setScore(n)`.
 
-**Speech (kid games only):** call `Arcade.voice.say("Yes!")` or `Arcade.voice.say(["Yes!", "five", "apples"])`
-— each part is one pre-rendered clip in `audio/voice/<slug>.wav` (slug = lowercase, non-alphanumerics → `-`),
-played back to back; a missing clip falls back to the browser's speechSynthesis. Clips are rendered ONCE,
-offline, with Kokoro (`tools/kokoro-tts/`): add the exact phrase to `phrases.json`, run `node gen.mjs`,
-commit the new `.wav`. Keep phrases composable (numbers, colors, shapes, "Find the" …) so combos don't explode.
-This is the one exception to "no audio files": speech can't be synthesized from oscillators, and running a
-TTS model in the browser would mean a ~90 MB download before a 5-year-old hears anything.
+**Speech (kid games only):** call `Arcade.voice.say("Yes!", "jessica")` or `Arcade.voice.say(["Yes!", "five", "apples"], "matilda")`
+— each part is one pre-rendered ElevenLabs clip in `audio/voice/<voice>/<slug>.mp3` (slug = lowercase, non-alphanumerics
+→ `-`), played back to back. Cast: `jessica` (Count, Shapes — playful teacher), `matilda` (Letters — phonics educator),
+`callum` (Frog world — husky animal/toad character). A missing voice clip drops to the old shared Kokoro
+`audio/voice/<slug>.wav`, then to the browser's speechSynthesis (last resort only — George hates it). Clips are rendered
+ONCE with `tools/elevenlabs-tts/gen.mjs`: add the exact phrase to `tools/kokoro-tts/phrases.json` (still the single
+phrase list), run `node tools/elevenlabs-tts/gen.mjs`, commit the new `.mp3`s. Keep phrases composable (numbers, colors,
+shapes, "Find the" …) so combos don't explode. This is the one exception to "no audio files": speech can't be synthesized
+from oscillators, and running a TTS model in the browser would mean a huge download before a 5-year-old hears anything.
+
+## Accounts + multiplayer (shell/auth.js, shell/net.js, server/)
+- **Nothing requires an account except multiplayer.** `Arcade.auth` (Clerk, loaded lazily over http/https only) exposes
+  `ready`, `available()`, `isSignedIn()`, `user() → {id,name,avatar}`, `token()`, `signIn()`. The header shows a
+  Sign in button / avatar. Listen for `document` event `arcade:auth` to react to sign-in/out.
+- **`Arcade.net`** is a room client for the relay in `server/server.js` (wss://play.vaultdigitaltools.com/ws):
+  `await net.connect()` (needs sign-in), `await net.host("coop"|"pvp")` / `net.join(code)` → room `{code, mode, hostId,
+  players}`, `net.send(d)` / `net.to(id, d)`, `net.on("msg"|"room"|"peer-join"|"peer-leave"|"host"|"close", fn)`,
+  `net.isHost()`. The server is a RELAY only (auth, rooms, rate limit, name filter) — games decide who is authoritative.
+- **Pattern used by Frog Quest** (`games/quest.js`, search `MULTIPLAYER`): host simulates the world and streams compact
+  snapshots ~8×/s; peers render + send `hit`/`eat` intents; everyone streams their own frog ~15×/s; PvP hits go straight
+  to the target. Use stable network ids (`nid`) on entities so peers can reference them. Scale world coords by canvas
+  size (`S`) when host and peer screens differ.
+- Test locally with `ALLOW_GUEST=1 PORT=8792 node server/server.js` + `Arcade.net.setUrl("ws://127.0.0.1:8792/ws")` +
+  `Arcade.net.connect({ guest: true, name })` (see `.tmp/mp_test.mjs` for a two-browser Playwright run).

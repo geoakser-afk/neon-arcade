@@ -5,8 +5,8 @@
    bubbles appear — tap the one that matches. Right = confetti + "Yes! Five!".
    Wrong = a gentle wobble and the game says the right answer. No losing. */
 (function () {
-  // spoken lines = pre-rendered Kokoro clips chained by the shell (Arcade.voice); parts = clip keys
-  function say(parts) { if (window.Arcade && Arcade.voice) Arcade.voice.say(parts); }
+  // spoken lines = pre-rendered ElevenLabs clips chained by the shell (Arcade.voice); parts = clip keys
+  function say(parts) { if (window.Arcade && Arcade.voice) Arcade.voice.say(parts, "jessica"); }
   const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
   const THINGS = [
     { name: "apples", col: "#ff6b6b", col2: "#b8232f", draw: function (g, r) { g.beginPath(); g.arc(0, r * 0.08, r, 0, Math.PI * 2); g.fill(); g.fillStyle = "#7fe0a0"; g.beginPath(); g.ellipse(r * 0.35, -r * 0.85, r * 0.3, r * 0.14, -0.6, 0, Math.PI * 2); g.fill(); g.strokeStyle = "#6b4a2a"; g.lineWidth = r * 0.1; g.beginPath(); g.moveTo(0, -r * 0.9); g.lineTo(0, -r * 1.2); g.stroke(); } },

@@ -185,7 +185,7 @@
         else if (kind === "butterfly") { a.arp([1046, 1318, 1568, 1318], { dur: 0.12, step: 0.09, vol: 0.06, type: "sine" }); }
         else if (kind === "ladybug") { a.arp([659, 784], { dur: 0.1, step: 0.1, vol: 0.07, type: "triangle" }); }
       }
-      function say(parts) { if (window.Arcade && Arcade.voice) Arcade.voice.say(parts); }
+      function say(parts) { if (window.Arcade && Arcade.voice) Arcade.voice.say(parts, "callum"); }
 
       // ---- actions ----
       function goTo(x, y, goal) {
@@ -732,7 +732,7 @@
           stage.appendChild(wrap);
           ctxMenu = function (e) { e.preventDefault(); }; canvas.addEventListener("contextmenu", ctxMenu);
           try { duckClip = new Audio("audio/animals/duck.mp3"); duckClip.preload = "auto"; } catch (e) { duckClip = null; }
-          if (window.Arcade && Arcade.voice && Arcade.voice.preload) Arcade.voice.preload(ANIMALS.map(function (a) { return a.line; }).concat(HOUSE_LINES, ["Yummy!", "Bye bye!", "Great job!", "Try again!"]));
+          if (window.Arcade && Arcade.voice && Arcade.voice.preload) Arcade.voice.preload(ANIMALS.map(function (a) { return a.line; }).concat(HOUSE_LINES, ["Yummy!", "Bye bye!", "Great job!", "Try again!"]), "callum");
           now = 0; eaten = 0; S = 0;
           resize(); reset();
           ctx.setScore(0);

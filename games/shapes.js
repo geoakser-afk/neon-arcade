@@ -5,8 +5,8 @@
    game repeats the ask. Learns: circle, square, triangle, star, heart, diamond
    + red, orange, yellow, green, blue, purple, pink. No losing. */
 (function () {
-  // spoken lines = pre-rendered Kokoro clips chained by the shell (Arcade.voice); parts = clip keys
-  function say(parts) { if (window.Arcade && Arcade.voice) Arcade.voice.say(parts); }
+  // spoken lines = pre-rendered ElevenLabs clips chained by the shell (Arcade.voice); parts = clip keys
+  function say(parts) { if (window.Arcade && Arcade.voice) Arcade.voice.say(parts, "jessica"); }
   const COLORS = [
     { n: "red", c: "#ff6b6b" }, { n: "orange", c: "#ffb86b" }, { n: "yellow", c: "#ffd36b" }, { n: "green", c: "#7fe0a0" },
     { n: "blue", c: "#74b9ff" }, { n: "purple", c: "#c98cff" }, { n: "pink", c: "#ff8fd0" }

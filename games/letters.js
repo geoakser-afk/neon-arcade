@@ -6,8 +6,8 @@
    = gentle wobble, it says the answer. No losing. Speech is the browser's own
    voice — no files, no network. */
 (function () {
-  // spoken lines = pre-rendered Kokoro clips chained by the shell (Arcade.voice); parts = clip keys
-  function say(parts) { if (window.Arcade && Arcade.voice) Arcade.voice.say(parts); }
+  // spoken lines = pre-rendered ElevenLabs clips chained by the shell (Arcade.voice); parts = clip keys
+  function say(parts) { if (window.Arcade && Arcade.voice) Arcade.voice.say(parts, "matilda"); }
   // letter, word, "says" sound, colors, and a simple drawn picture
   const L = [
     { l: "A", w: "apple", s: "ah", c: "#ff6b6b", c2: "#b8232f", d: function (g, r) { g.beginPath(); g.arc(0, r * 0.1, r, 0, 6.29); g.fill(); g.fillStyle = "#7fe0a0"; g.beginPath(); g.ellipse(r * 0.35, -r * 0.85, r * 0.32, r * 0.15, -0.6, 0, 6.29); g.fill(); g.strokeStyle = "#6b4a2a"; g.lineWidth = r * 0.1; g.beginPath(); g.moveTo(0, -r * 0.9); g.lineTo(0, -r * 1.25); g.stroke(); } },
