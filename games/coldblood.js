@@ -361,7 +361,7 @@
         statsDirty = true; screen = "game"; ctx.setScore(wave - 1); renderUI(); toast(map.name + " · " + diff.name + (restore ? " — run restored" : ""), map.accent);
       }
       function saveRun() { save.run = { mapIdx: MAPS.indexOf(map), diffIdx: DIFFS.indexOf(diff), cash, lives, wave, freeplay, towers: towers.map((t) => ({ type: t.type, x: t.x / S, y: t.y / S, tiers: t.tiers, mode: t.mode, spent: t.spent })) }; persist(); }
-      function mkTower(type, x, y) { return { id: idSeq++, type, x, y, tiers: [0, 0, 0], mode: "first", cd: 0, angle: -Math.PI / 2, kills: 0, spent: TOWERS[type].cost, atkK: 0, stunT: 0, roarT: 0, ramp: 0, rampTgt: null, s: null, buff: 0, buffRate: 0, buffRange: 0 }; }
+      function mkTower(type, x, y) { return { id: idSeq++, type, x, y, spawnT: 0, tiers: [0, 0, 0], mode: "first", cd: 0, angle: -Math.PI / 2, kills: 0, spent: TOWERS[type].cost, atkK: 0, stunT: 0, roarT: 0, ramp: 0, rampTgt: null, s: null, buff: 0, buffRate: 0, buffRange: 0 }; }
 
       // ---------- stats ----------
       function baseStats(type) { const T = TOWERS[type]; return { dmg: T.dmg, rate: T.rate, range: T.range, pierce: T.pierce || 1, crit: T.crit || 0, critMul: 2, air: !!T.air, armorPierce: T.armorPierce || 0, poison: T.poison || 0, poisonDur: 3, poisonArmor: false, cone: T.cone || 0, slow: T.slow || 0, slowHit: 0, slowDur: 1.5, stun: T.stun || 0, stunHit: 0, stunChance: 0, bleed: T.bleed || 0, bleedDur: 3, bleedSpread: false, buff: T.buff || 0, buffRate: 0, buffRange: 0, cashWave: 0, cashBonus: 0, vuln: 0, bossMul: 1, slowedMul: 1, knockback: 0, airBonus: T.airBonus || 1, execute: 0, roar: T.roar || 0, roarDur: T.roarDur || 0, roarDmg: 0, ramp: false, airOnlyFar: false }; }
@@ -370,17 +370,19 @@
       function towerRange(t) { return t.s.range * S * (1 + t.buffRange); }
       function upgradeCost(t, pi) { const tier = t.tiers[pi]; if (tier >= 3) return null; let c = UP[t.type][pi].tiers[tier].c; if (tier === 2 && meta.t3disc) c = Math.round(c * (1 - meta.t3disc)); return c; }
       function canUpgrade(t, pi) { if (t.tiers[pi] >= 3) return false; const used = t.tiers.filter((x, i) => x > 0 && i !== pi).length; return used < 2; }
-      function upgrade(t, pi) { const c = upgradeCost(t, pi); if (c == null || !canUpgrade(t, pi)) { sndNo(); return; } if (cash < c) { toast("Not enough cash", "#ff8fa3"); sndNo(); return; } cash -= c; t.spent += c; t.tiers[pi]++; statsDirty = true; sndUpgrade(); burst(t.x, t.y, TOWERS[t.type].col, 14); renderUI(); }
-      function sellTower(t) { const v = Math.round(t.spent * meta.sell); cash += v; towers = towers.filter((x) => x !== t); if (selected === t) selected = null; statsDirty = true; floaters.push({ x: t.x, y: t.y, text: "+$" + v, col: "#ffd36b", t: 0 }); sndSell(); renderUI(); }
+      function upgrade(t, pi) { const c = upgradeCost(t, pi); if (c == null || !canUpgrade(t, pi)) { sndNo(); return; } if (cash < c) { toast("Not enough cash", "#ff8fa3"); sndNo(); return; } cash -= c; t.spent += c; t.tiers[pi]++; statsDirty = true; sndUpgrade(); burst(t.x, t.y, TOWERS[t.type].col, 26); burst(t.x, t.y, "#ffd36b", 12); ring(t.x, t.y, S * 0.12, "#ffd36b", 500); t.spawnT = 0.6; floaters.push({ x: t.x, y: t.y - S * 0.08, text: UP[t.type][pi].tiers[t.tiers[pi] - 1].n.toUpperCase() + "!", col: "#ffd36b", t: 0, big: true }); floaters.push({ x: t.x, y: t.y - S * 0.04, text: "-$" + c, col: "#ffd36b", t: 0 }); shakeT = Math.max(shakeT, 120); renderUI(); }
+      function sellTower(t) { const v = Math.round(t.spent * meta.sell); cash += v; towers = towers.filter((x) => x !== t); if (selected === t) selected = null; statsDirty = true; burst(t.x, t.y, "#ff8fa3", 18); ring(t.x, t.y, S * 0.08, "#ff8fa3", 400); floaters.push({ x: t.x, y: t.y - S * 0.03, text: "SOLD  +$" + v, col: "#ffd36b", t: 0, big: true }); sndSell(); renderUI(); }
       function place(type, x, y) {
         const T = TOWERS[type]; if (!unlocked(type)) return; const r = S * 0.033;
         if (cash < T.cost) { toast("Not enough cash for " + T.name, "#ff8fa3"); sndNo(); return false; }
         const why = blocked(x, y, r); if (why) { toast(why === "road" ? "Not on the road!" : why === "water" ? "Reptiles can't build in water" : why === "tower" ? "Too close to another reptile" : "Can't build there", "#ff8fa3"); sndNo(); return false; }
-        cash -= T.cost; const t = mkTower(type, x, y); towers.push(t); statsDirty = true; selected = t; sndPlace(); burst(x, y, T.col, 10); renderUI(); return true;
+        cash -= T.cost; const t = mkTower(type, x, y); t.spawnT = 1; towers.push(t); statsDirty = true; if (!placing) selected = t; sndPlace(); A().tone(140, 0.12, { type: "triangle", vol: 0.08, glide: 60 }); burst(x, y, T.col, 22); burst(x, y, "#c8b89a", 10); ring(x, y, S * 0.09, T.col, 450); ring(x, y, S * 0.05, "#ffffff", 250); floaters.push({ x, y: y - S * 0.05, text: "-$" + T.cost, col: "#ffd36b", t: 0 }); floaters.push({ x, y: y - S * 0.09, text: T.name.toUpperCase() + " DEPLOYED", col: T.col, t: 0, big: true }); shakeT = Math.max(shakeT, 140); renderUI(); return true;
       }
 
       // ---------- sounds ----------
       const A = () => ctx.audio;
+      function sndClick() { A().tone(660, 0.05, { type: "sine", vol: 0.05, glide: 880 }); }
+      function sndPick() { A().arp([440, 660], { dur: 0.07, step: 0.05, vol: 0.07, type: "triangle" }); }
       function sndPlace() { A().tone(392, 0.08, { type: "triangle", vol: 0.08, glide: 523 }); }
       function sndUpgrade() { A().arp([523, 659, 784], { dur: 0.1, step: 0.06, vol: 0.09, type: "triangle" }); }
       function sndSell() { A().tone(600, 0.1, { type: "sine", vol: 0.07, glide: 300 }); }
@@ -499,7 +501,7 @@
         if (waveActive && !queue.length && !enemies.length) waveCleared();
         // towers
         towers.forEach((t) => {
-          if (t.atkK > 0) t.atkK = Math.max(0, t.atkK - dt / 160);
+          if (t.atkK > 0) t.atkK = Math.max(0, t.atkK - dt / 160); if (t.spawnT > 0) t.spawnT = Math.max(0, t.spawnT - dt / 420);
           if (t.stunT > 0) { t.stunT -= dt; return; }
           if (TOWERS[t.type].kind === "aura") return;
           if (t.s.roar) { t.roarT += dt; if (t.roarT >= t.s.roar * 1000 && enemies.some((e) => !e.dead && dist(e.x, e.y, t.x, t.y) <= towerRange(t) * 1.3)) { t.roarT = 0; roar(t); } }
@@ -572,11 +574,13 @@
           const r = towerR(t), tier = Math.max.apply(null, t.tiers);
           g.fillStyle = "rgba(0,0,0,0.35)"; ell(g, t.x, t.y + r * 0.9, r * 1.4, r * 0.55); g.fill();
           if (TOWERS[t.type].kind === "aura" || t.s.buff) { g.strokeStyle = rgba(TOWERS[t.type].col, 0.18 + 0.06 * Math.sin(now * 0.003)); g.lineWidth = 1.5; g.setLineDash([S * 0.01, S * 0.012]); g.beginPath(); g.arc(t.x, t.y, towerRange(t), 0, TAU); g.stroke(); g.setLineDash([]); }
-          g.save(); g.translate(t.x, t.y); g.rotate(t.angle); drawReptile(g, t.type, r, now + t.id * 331, tier, t.atkK); g.restore();
+          g.save(); g.translate(t.x, t.y); if (t.spawnT > 0) { const k = t.spawnT, bounce = 1 + Math.sin((1 - k) * Math.PI) * 0.35 + k * 0.9; g.translate(0, -k * k * S * 0.12); g.scale(bounce, bounce); g.globalAlpha = 1 - k * 0.3; } g.rotate(t.angle); drawReptile(g, t.type, r, now + t.id * 331, tier, t.atkK); g.restore();
+          if (t.spawnT > 0) { g.strokeStyle = rgba(TOWERS[t.type].col, t.spawnT); g.lineWidth = S * 0.006; g.beginPath(); g.arc(t.x, t.y, r * (1.2 + (1 - t.spawnT) * 2.5), 0, TAU); g.stroke(); }
           if (t.stunT > 0) { g.fillStyle = "#ffd36b"; for (let k = 0; k < 3; k++) { const a = now * 0.006 + k * 2.1; dot(g, t.x + Math.cos(a) * r * 1.6, t.y - r * 1.6 + Math.sin(a) * r * 0.4, S * 0.005); } }
           if (t.buff) { g.fillStyle = rgba("#ffd36b", 0.9); g.font = "800 " + Math.round(S * 0.016) + "px system-ui"; g.textAlign = "center"; g.fillText("▲", t.x + r * 1.5, t.y - r * 1.3); }
         });
         if (selected) { const R = towerRange(selected); g.strokeStyle = rgba(TOWERS[selected.type].col, 0.7); g.lineWidth = 2; g.beginPath(); g.arc(selected.x, selected.y, R, 0, TAU); g.stroke(); g.fillStyle = rgba(TOWERS[selected.type].col, 0.06); g.fill(); }
+        if (placing) { const T = TOWERS[placing]; g.save(); g.fillStyle = "rgba(10,8,20,0.75)"; rr(g, S * 0.18, S * 0.02, S * 0.64, S * 0.06, S * 0.03); g.fill(); g.strokeStyle = rgba(T.col, 0.6 + 0.3 * Math.sin(now * 0.006)); g.lineWidth = 2; g.stroke(); g.fillStyle = T.col; g.font = "800 " + Math.round(S * 0.024) + "px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("PLACE " + T.name.toUpperCase() + "  ·  $" + T.cost + "  ·  tap beside the road", S / 2, S * 0.05); g.restore(); }
         if (placing && hover) { const T = TOWERS[placing], r = S * 0.033, R = baseStats(placing).range * meta.rangeMul * S; g.save(); g.globalAlpha = 0.85; g.strokeStyle = hoverValid ? rgba("#7fe0a0", 0.8) : rgba("#ff6b6b", 0.8); g.fillStyle = hoverValid ? rgba("#7fe0a0", 0.08) : rgba("#ff6b6b", 0.1); g.lineWidth = 2; g.beginPath(); g.arc(hover.x, hover.y, R, 0, TAU); g.fill(); g.stroke(); g.globalAlpha = hoverValid ? 0.75 : 0.4; g.translate(hover.x, hover.y); g.rotate(-Math.PI / 2); drawReptile(g, placing, r, now, 0, 0); g.restore(); }
       }
       function drawEnemies() {
@@ -673,12 +677,14 @@
           const sell = el("button", "cb-sell", "sell $" + Math.round(t.spent * meta.sell)); sell.onclick = () => sellTower(t); foot.appendChild(sell); panel.appendChild(foot);
           return;
         }
-        panel.appendChild(el("div", "cb-shop-title", placing ? "Tap the map to place · right-click or ✕ to cancel" : "Reptiles — pick one, then tap the map"));
+        const ttl = el("div", "cb-shop-title" + (placing ? " placing" : "")); ttl.innerHTML = placing ? "<b>" + TOWERS[placing].name.toUpperCase() + " READY</b> — tap the ground beside the road · <u>cancel</u>" : "Reptiles — pick one, then tap the map"; if (placing) ttl.querySelector("u").onclick = () => { placing = null; renderPanel(); }; panel.appendChild(ttl);
         const grid = el("div", "cb-shop");
         Object.keys(TOWERS).forEach((type, i) => {
-          const T = TOWERS[type], ok = unlocked(type), card = el("button", "cb-card" + (placing === type ? " on" : "") + (!ok ? " lock" : cash < T.cost ? " poor" : ""));
-          card.appendChild(iconCanvas(type, 44)); const nm = el("div", "cb-card-name"); nm.innerHTML = "<b>" + T.name + "</b><small>" + (ok ? "$" + T.cost : "🥚 skill tree") + "</small>"; card.appendChild(nm); card.title = T.desc + (T.air ? "" : " · cannot hit flyers"); card.appendChild(el("kbd", null, String(i + 1)));
-          card.onclick = () => { if (!ok) { toast("Unlock " + T.name + " in the skill tree", "#c98cff"); return; } placing = placing === type ? null : type; selected = null; renderPanel(); };
+          const T = TOWERS[type], ok = unlocked(type), card = el("button", "cb-card" + (placing === type ? " on" : "") + (!ok ? " lock" : cash < T.cost ? " poor" : " can")); card.style.setProperty("--tc", T.col);
+          card.appendChild(iconCanvas(type, 56)); const nm = el("div", "cb-card-name"); const pip = (v, max) => { let o = ""; for (let k = 0; k < 4; k++) o += "<i class='" + (v / max > k / 4 ? "on" : "") + "'></i>"; return o; }; const bs = baseStats(type); const dps = bs.rate ? bs.dmg * bs.rate * (bs.pierce > 1 ? 1.5 : 1) + (bs.poison || 0) : 0;
+          nm.innerHTML = "<b>" + T.name + "</b><em>" + (ok ? "$" + T.cost : "🥚 skill tree") + "</em><span class='cb-pips'><label>dmg</label>" + pip(T.kind === "aura" ? 0 : dps, 60) + "<label>rng</label>" + pip(bs.range, 0.34) + "<label>" + (T.kind === "aura" ? "slow" : "spd") + "</label>" + pip(T.kind === "aura" ? bs.slow : bs.rate, T.kind === "aura" ? 0.7 : 2.4) + "</span>"; card.appendChild(nm); card.title = T.desc + (T.air ? "" : " · cannot hit flyers"); card.appendChild(el("kbd", null, String(i + 1)));
+          if (!T.air) card.appendChild(el("div", "cb-noair", "ground only"));
+          card.onclick = () => { if (!ok) { toast("Unlock " + T.name + " in the skill tree", "#c98cff"); sndNo(); return; } if (cash < T.cost && placing !== type) { toast("Need $" + (T.cost - Math.floor(cash)) + " more for " + T.name, "#ff8fa3"); sndNo(); card.classList.add("shake"); setTimeout(() => card.classList.remove("shake"), 400); return; } placing = placing === type ? null : type; selected = null; if (placing) sndPick(); renderPanel(); };
           grid.appendChild(card);
         });
         panel.appendChild(grid);
@@ -737,9 +743,9 @@
       function onDown(x, y, button) {
         if (screen !== "game") return;
         if (button === 2) { placing = null; selected = null; renderPanel(); return; }
-        if (placing) { if (place(placing, x, y)) { if (!(window.Arcade && Arcade.input && false)) placing = cash >= TOWERS[placing].cost ? placing : null; } renderPanel(); return; }
+        if (placing) { if (place(placing, x, y) && cash < TOWERS[placing].cost) { placing = null; toast("Out of cash — sell or clear a wave", "#ffd36b"); } renderPanel(); return; }
         let best = null, bd = 1e9; towers.forEach((t) => { const d = dist(x, y, t.x, t.y); if (d < towerR(t) * 1.6 && d < bd) { bd = d; best = t; } });
-        selected = best; renderPanel();
+        if (best !== selected) { selected = best; if (best) { sndClick(); ring(best.x, best.y, towerR(best) * 2.2, TOWERS[best.type].col, 300); } renderPanel(); }
       }
       function onMove(x, y) { hover = { x, y }; if (placing) hoverValid = !blocked(x, y, S * 0.033); }
 
@@ -772,7 +778,7 @@
           Arcade._cb = { get: () => ({ screen, map: map && map.id, diff: diff && diff.id, cash, lives, wave, waveActive, towers: towers.map((t) => ({ type: t.type, x: t.x, y: t.y, tiers: t.tiers, kills: t.kills })), enemies: enemies.length, S, eggs: save.eggs, nodes: Object.keys(save.nodes), paths: paths.map((P) => P.pts) }), cheat: (o) => { if (o.cash != null) cash = o.cash; if (o.eggs != null) { save.eggs = o.eggs; persist(); } if (o.wave != null) wave = o.wave; renderUI(); }, act: { startWave, place, upgrade: (i, pi) => upgrade(towers[i], pi), select: (i) => { selected = towers[i]; renderPanel(); }, newRun, showMenu, showTree, setSpeed: (v) => { speed = v; }, endRun } };
           draw();
         },
-        handleInput(intent) { if (intent.type !== "point") return; if (intent.phase === "move") onMove(intent.x, intent.y); else if (intent.phase === "down") onDown(intent.x, intent.y, intent.button); },
+        handleInput(intent) { if (intent.type !== "point" || (intent.el && intent.el !== canvas)) return; if (intent.phase === "move") onMove(intent.x, intent.y); else if (intent.phase === "down") onDown(intent.x, intent.y, intent.button); },
         tick(dt) { update(dt); draw(); if (screen === "game" && !paused && (now % 400) < 20) renderHud(); },
         getScore() { return Math.max(0, wave - 1); },
         teardown() {
@@ -798,8 +804,11 @@
 .cb-panel{width:100%;max-width:820px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:12px}.cb.wide .cb-panel{width:300px;flex:0 0 300px;max-height:calc(100vh - 140px);overflow-y:auto}
 .cb-shop-title{font-size:12px;letter-spacing:.06em;text-transform:uppercase;opacity:.6;margin-bottom:8px}
 .cb-shop{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.cb.wide .cb-shop{grid-template-columns:repeat(2,1fr)}
-.cb-card{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:8px 6px;color:#e6ecf5;font:inherit;cursor:pointer;text-align:center}.cb-card:hover{border-color:rgba(127,224,160,.5)}.cb-card.on{border-color:#7fe0a0;background:rgba(127,224,160,.16);box-shadow:0 0 18px rgba(127,224,160,.25)}.cb-card.poor{opacity:.55}.cb-card.lock{opacity:.4;filter:grayscale(.6)}.cb-card kbd{position:absolute;top:4px;left:6px;font-size:10px;opacity:.4}
-.cb-card-name b{display:block;font-size:12px}.cb-card-name small{opacity:.7;font-size:11px;color:#ffd36b}
+.cb-card{--tc:#7fe0a0;position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02));border:1.5px solid rgba(255,255,255,.12);border-radius:16px;padding:10px 6px 8px;color:#e6ecf5;font:inherit;cursor:pointer;text-align:center;transition:transform .12s,border-color .12s,box-shadow .12s}.cb-card canvas{transition:transform .15s}.cb-card:hover{border-color:var(--tc);transform:translateY(-2px)}.cb-card:hover canvas{transform:scale(1.12)}.cb-card.can{border-color:color-mix(in srgb,var(--tc) 45%,transparent)}.cb-card.on{border-color:var(--tc);background:color-mix(in srgb,var(--tc) 18%,transparent);box-shadow:0 0 22px color-mix(in srgb,var(--tc) 45%,transparent),inset 0 0 0 1px var(--tc);animation:cbpulse 1.1s ease-in-out infinite}.cb-card.on canvas{transform:scale(1.15)}.cb-card.poor{opacity:.5;filter:saturate(.5)}.cb-card.lock{opacity:.4;filter:grayscale(.6)}.cb-card kbd{position:absolute;top:5px;left:7px;font-size:10px;opacity:.45;font-family:inherit}.cb-card.shake{animation:cbshake .35s}
+@keyframes cbpulse{0%,100%{box-shadow:0 0 14px color-mix(in srgb,var(--tc) 35%,transparent)}50%{box-shadow:0 0 30px color-mix(in srgb,var(--tc) 70%,transparent)}}@keyframes cbshake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.cb-card-name b{display:block;font-size:12.5px;letter-spacing:.01em}.cb-card-name em{display:inline-block;font-style:normal;font-weight:800;font-size:12px;color:#0e0c1e;background:#ffd36b;border-radius:999px;padding:1px 9px;margin-top:3px}.cb-card.lock .cb-card-name em,.cb-card.poor .cb-card-name em{background:rgba(255,255,255,.14);color:#e6ecf5}
+.cb-pips{display:grid;grid-template-columns:auto 1fr;gap:1px 5px;align-items:center;margin-top:5px;font-size:9px;text-transform:uppercase;letter-spacing:.06em;opacity:.8;text-align:left}.cb-pips label{opacity:.6}.cb-pips i{display:inline-block;width:8px;height:4px;border-radius:2px;background:rgba(255,255,255,.14);margin-right:2px;vertical-align:middle}.cb-pips i.on{background:var(--tc)}.cb-noair{position:absolute;top:5px;right:7px;font-size:9px;color:#ff8fa3;opacity:.85}
+.cb-shop-title.placing{color:#e6ecf5;opacity:1;background:rgba(127,224,160,.12);border:1px solid rgba(127,224,160,.4);border-radius:10px;padding:8px 10px;text-transform:none;letter-spacing:0;font-size:13px}.cb-shop-title.placing b{color:#7fe0a0}.cb-shop-title.placing u{cursor:pointer;opacity:.7;margin-left:4px}
 .cb-tip{margin-top:8px;font-size:12px;opacity:.6}
 .cb-sel-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}.cb-sel-head b{display:block;font-size:15px}.cb-sel-head small{opacity:.65;font-size:12px;display:block}.cb-x{margin-left:auto;background:transparent;border:0;color:#e6ecf5;opacity:.6;font-size:16px;cursor:pointer}
 .cb-stats{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;opacity:.85;margin-bottom:8px}.cb-stats b{color:#7fe0a0}.cb-warn{color:#ff8fa3}
