@@ -427,7 +427,7 @@
       let screen = "menu";                         // menu | tree | game | end
       let map = null, diff = null, paths = [], towers = [], enemies = [], shots = [], fx = [], floaters = [], auras = [];
       let cash = 0, lives = 0, wave = 0, waveActive = false, queue = [], waveT = 0, speed = 1, paused = false, autoNext = false, freeplay = false, won = false;
-      let selected = null, placing = null, moving = null, hud = null, hover = null, hoverValid = false, idSeq = 1, shakeT = 0, roadDash = 0, nextWaveIn = 0, statsDirty = true;
+      let selected = null, placing = null, moving = null, hud = null, hover = null, hoverValid = false, idSeq = 1, shakeT = 0, roadDash = 0, nextWaveIn = 0, statsDirty = true, runEggs = 0;
       let pickMap = 0, pickDiff = 1, toastEl = null, toastT = null;
 
       // ---------- persistence ----------
@@ -466,12 +466,12 @@
       function newRun(mapIdx, diffIdx, restore) {
         map = MAPS[mapIdx]; diff = DIFFS[diffIdx]; freeplay = false; won = false;
         paths = [buildPath(map.path)]; if (map.path2) paths.push(buildPath(map.path2));
-        towers = []; enemies = []; shots = []; fx = []; floaters = []; queue = []; selected = null; placing = null; moving = null; waveActive = false; paused = false; speed = 1;
+        towers = []; enemies = []; shots = []; fx = []; floaters = []; queue = []; selected = null; placing = null; moving = null; waveActive = false; paused = false; speed = 1; runEggs = 0;
         cash = diff.start + meta.startCash; lives = diff.lives + meta.lives; wave = 1;
-        if (restore) { cash = restore.cash; lives = restore.lives; wave = restore.wave; freeplay = !!restore.freeplay; restore.towers.forEach((rt) => { const t = mkTower(rt.type, rt.x * S, rt.y * S); t.tiers = rt.tiers.slice(); t.mode = rt.mode || "first"; t.spent = rt.spent || TOWERS[rt.type].cost; t.bank = rt.bank || 0; if (rt.patrol != null && TOWERS[rt.type].fly) { t.patrol = rt.patrol; } towers.push(t); }); }
+        if (restore) { cash = restore.cash; lives = restore.lives; wave = restore.wave; runEggs = restore.runEggs || 0; freeplay = !!restore.freeplay; restore.towers.forEach((rt) => { const t = mkTower(rt.type, rt.x * S, rt.y * S); t.tiers = rt.tiers.slice(); t.mode = rt.mode || "first"; t.spent = rt.spent || TOWERS[rt.type].cost; t.bank = rt.bank || 0; if (rt.patrol != null && TOWERS[rt.type].fly) { t.patrol = rt.patrol; } towers.push(t); }); }
         statsDirty = true; screen = "game"; ctx.setScore(wave - 1); renderUI(); toast(map.name + " · " + diff.name + (restore ? " — run restored" : ""), map.accent);
       }
-      function saveRun() { save.run = { mapIdx: MAPS.indexOf(map), diffIdx: DIFFS.indexOf(diff), cash, lives, wave, freeplay, towers: towers.map((t) => ({ type: t.type, x: (t.patrol != null ? t.hx : t.x) / S, y: (t.patrol != null ? t.hy : t.y) / S, tiers: t.tiers, mode: t.mode, spent: t.spent, bank: t.bank || 0, patrol: t.patrol })) }; persist(); }
+      function saveRun() { save.run = { mapIdx: MAPS.indexOf(map), diffIdx: DIFFS.indexOf(diff), cash, lives, wave, freeplay, runEggs, towers: towers.map((t) => ({ type: t.type, x: (t.patrol != null ? t.hx : t.x) / S, y: (t.patrol != null ? t.hy : t.y) / S, tiers: t.tiers, mode: t.mode, spent: t.spent, bank: t.bank || 0, patrol: t.patrol })) }; persist(); }
       function mkTower(type, x, y) { return { id: idSeq++, type, x, y, hx: x, hy: y, patrol: null, pd: 0, pdir: 1, bank: 0, farmT: 0, spawnT: 0, tiers: [0, 0, 0], mode: "first", cd: 0, angle: -Math.PI / 2, kills: 0, spent: TOWERS[type].cost, atkK: 0, stunT: 0, roarT: 0, ramp: 0, rampTgt: null, s: null, buff: 0, buffRate: 0, buffRange: 0 }; }
 
       // ---------- stats ----------
@@ -530,17 +530,29 @@
         cash += bonus; floaters.push({ x: S / 2, y: S * 0.12, text: "wave " + wave + " cleared  +$" + bonus, col: "#ffd36b", t: 0, big: true });
         towers.forEach((t) => { if (!t.s || !t.s.income) return; if (t.s.bank) { t.bank = Math.min(t.s.cap, Math.floor((t.bank + t.s.income) * (1 + t.s.bank))); floaters.push({ x: t.x, y: t.y - S * 0.06, text: "🥚 $" + t.bank + " stored", col: "#c9e07f", t: 0 }); } else { cash += t.s.income; floaters.push({ x: t.x, y: t.y - S * 0.06, text: "🥚 +$" + t.s.income, col: "#ffd36b", t: 0, big: true }); } burst(t.x, t.y, "#ffd36b", 12); });
         if (meta.heal10 && wave % 10 === 0) { lives += meta.heal10; toast("Second Wind: +" + meta.heal10 + " lives", "#7fe0a0"); }
+        if (isCheckpoint(wave)) checkpointEggs();
         wave++; ctx.setScore(wave - 1); saveRun(); renderUI();
         if (wave === 41 && !freeplay) { won = true; endRun(true); return; }
         if (autoNext) nextWaveIn = 1400;
       }
+      function eggRate() { return diff.eggs * map.diff * meta.eggMul; }
+      function isCheckpoint(w) { return w <= 40 ? [10, 20, 30, 35, 40].indexOf(w) >= 0 : w % 5 === 0; }
+      // Boss waves pay out the eggs earned so far (an advance on the run total) plus a flat boss bonus — no need to die to spend eggs.
+      function checkpointEggs() {
+        const rate = eggRate(), owed = Math.max(0, Math.floor(wave * rate) - runEggs), bonus = Math.max(3, Math.round(5 * rate)), got = owed + bonus;
+        runEggs += owed; save.eggs += got; persist();
+        floaters.push({ x: S / 2, y: S * 0.32, text: "🥚 +" + got + " EGGS · boss checkpoint", col: "#ffd36b", t: 0, big: true });
+        toast("🥚 +" + got + " eggs banked — spend them in the skill tree (☰) any time", "#ffd36b"); burst(S / 2, S * 0.32, "#ffd36b", 40); ring(S / 2, S * 0.32, S * 0.15, "#ffd36b", 700);
+        A().arp([523, 659, 784, 1046], { dur: 0.2, step: 0.08, vol: 0.12, type: "triangle" });
+        renderHud(); if (hud && hud.E) { hud.E.classList.remove("pop"); void hud.E.offsetWidth; hud.E.classList.add("pop"); }
+      }
       function endRun(victory) {
         const cleared = wave - 1, mapId = map.id, dId = diff.id;
         const key = mapId + ":" + dId, prevBest = save.best[key] || 0;
-        let eggs = Math.floor(cleared * diff.eggs * map.diff * meta.eggMul); if (victory && prevBest < 40) eggs += 40;
+        let eggs = Math.max(0, Math.floor(cleared * eggRate()) - runEggs); if (victory && prevBest < 40) eggs += 40; const banked = runEggs;
         save.eggs += eggs; save.best[key] = Math.max(prevBest, cleared); save.runs++; save.run = victory ? save.run : null; persist();
         screen = "end"; paused = true; A().arp(victory ? [523, 659, 784, 1046, 1318] : [330, 262, 196], { dur: 0.25, step: 0.1, vol: 0.12, type: "triangle" });
-        renderUI(); showEnd(victory, cleared, eggs, prevBest);
+        renderUI(); showEnd(victory, cleared, eggs, prevBest, banked);
         if (window.Arcade && Arcade.cloud) Arcade.cloud.submit("coldblood:" + mapId + ":" + dId, cleared);
       }
 
@@ -784,17 +796,17 @@
         if (screen !== "game") { topbar.style.display = "none"; return; } topbar.style.display = "";
         if (!hud || hud.topbar !== topbar) {
           topbar.innerHTML = "";
-          const L = el("div", "cb-stat"), C = el("div", "cb-stat"), Wv = el("div", "cb-stat"); topbar.appendChild(L); topbar.appendChild(C); topbar.appendChild(Wv);
+          const L = el("div", "cb-stat"), C = el("div", "cb-stat"), Wv = el("div", "cb-stat"), E = el("div", "cb-stat cb-hudeggs"); E.title = "Eggs — bosses drop them mid-run; spend in the skill tree (☰)"; topbar.appendChild(L); topbar.appendChild(C); topbar.appendChild(Wv); topbar.appendChild(E);
           const ctr = el("div", "cb-ctr");
           const start = el("button", "btn cb-start"); start.onclick = () => { if (waveActive) { if (diff.id === "hard" && !paused) { toast("Hard mode: no pausing while bugs are on the road", "#ff8fa3"); sndNo(); return; } paused = !paused; sndClick(); } else { paused = false; startWave(); } renderHud(); }; ctr.appendChild(start);
           const spd = el("div", "cb-speed"); const sps = [1, 2, 3].map((v) => { const b = el("button", "cb-sp", v + "×"); b.onclick = () => { if (b.disabled) { toast("Unlock 3× in the skill tree", "#c98cff"); return; } speed = v; sndClick(); renderHud(); }; spd.appendChild(b); return b; }); ctr.appendChild(spd);
           const auto = el("button", "cb-auto", "auto"); auto.title = "Start the next wave automatically"; auto.onclick = () => { autoNext = !autoNext; sndClick(); toast(autoNext ? "Auto-start ON — next wave begins by itself" : "Auto-start off", autoNext ? "#7fe0a0" : "#e6ecf5"); renderHud(); }; ctr.appendChild(auto);
           const menu = el("button", "cb-menu", "☰"); menu.title = "Maps / skill tree (run is saved between waves)"; menu.onclick = () => { if (diff.id === "hard" && waveActive) { toast("Hard mode: finish the wave first", "#ff8fa3"); sndNo(); return; } paused = true; saveRun(); showMenu(); }; ctr.appendChild(menu);
           topbar.appendChild(ctr);
-          hud = { topbar, L, C, Wv, start, sps, auto, menu, cache: {} };
+          hud = { topbar, L, C, Wv, E, start, sps, auto, menu, cache: {} };
         }
         const H = hud, set = (node, key, html) => { if (H.cache[key] !== html) { H.cache[key] = html; node.innerHTML = html; } }, cls = (node, key, c) => { if (H.cache[key] !== c) { H.cache[key] = c; node.className = c; } };
-        set(H.L, "L", "<b>♥ " + lives + "</b><small>lives</small>"); set(H.C, "C", "<b>$" + Math.floor(cash) + "</b><small>cash</small>"); set(H.Wv, "W", "<b>" + Math.min(wave, 999) + (freeplay || wave > 40 ? "" : " / 40") + "</b><small>wave</small>");
+        set(H.L, "L", "<b>♥ " + lives + "</b><small>lives</small>"); set(H.C, "C", "<b>$" + Math.floor(cash) + "</b><small>cash</small>"); set(H.Wv, "W", "<b>" + Math.min(wave, 999) + (freeplay || wave > 40 ? "" : " / 40") + "</b><small>wave</small>"); set(H.E, "E", "<b>🥚 " + save.eggs + "</b><small>eggs</small>");
         const hardLock = diff.id === "hard" && waveActive && !paused;
         cls(H.start, "sc", "btn cb-start" + (waveActive ? " on" : "") + (hardLock ? " nolock" : "")); set(H.start, "st", waveActive ? (paused ? "▶ Resume" : hardLock ? "🔥 No pause (Hard)" : "⏸ Pause") : "▶ Start wave " + wave);
         H.sps.forEach((b, i) => { const v = i + 1, dis = v === 3 && !meta.speed3; cls(b, "sp" + v, "cb-sp" + (speed === v ? " on" : "") + (dis ? " dis" : "")); if (b.disabled !== dis) { b.disabled = dis; b.title = dis ? "Unlock 3× in the skill tree" : ""; } });
@@ -837,7 +849,7 @@
           grid.appendChild(card);
         });
         panel.appendChild(grid);
-        const tip = el("div", "cb-tip"); const nextBoss = [10, 20, 30, 35, 40].find((w) => w >= wave); tip.textContent = nextBoss ? "Next boss: wave " + nextBoss + " (" + ENEMIES[{ 10: "bigbeetle", 20: "centipede", 30: "raptor", 35: "ankylo", 40: "trex" }[nextBoss]].name + ")" : "Freeplay — bosses every 5 waves, bugs keep scaling."; panel.appendChild(tip);
+        const tip = el("div", "cb-tip"); const nextBoss = [10, 20, 30, 35, 40].find((w) => w >= wave); tip.textContent = nextBoss ? "Next boss: wave " + nextBoss + " (" + ENEMIES[{ 10: "bigbeetle", 20: "centipede", 30: "raptor", 35: "ankylo", 40: "trex" }[nextBoss]].name + ") · survive it for a 🥚 egg drop" : "Freeplay — bosses every 5 waves drop eggs, bugs keep scaling."; panel.appendChild(tip);
       }
       function showMenu() {
         screen = "menu"; renderUI(); overlay.innerHTML = ""; overlay.style.display = ""; overlay.classList.add("menu"); overlay.classList.remove("tree");
@@ -852,7 +864,7 @@
         if (save.rebirth) { const rb = el("div", "cb-rbline"); rb.innerHTML = "✦ Rebirth <b>" + save.rebirth + "</b> · " + REBIRTH_PERKS.filter((r) => r.n <= save.rebirth).map((r) => TOWERS[r.reptile].name).join(", ") + " unlocked"; card.appendChild(rb); }
         tree = null;
         const go = el("button", "btn cb-go", "Defend " + MAPS[pickMap].name); go.onclick = () => { overlay.style.display = "none"; newRun(pickMap, pickDiff, null); }; card.appendChild(go);
-        if (!save.seen) { card.appendChild(el("p", "cb-help", "Bugs march down the road toward your nest. Pick a reptile below the map, tap the ground beside the road to place it, then Start wave. Click a reptile to upgrade it down two of its three paths. Dinosaurs show up at waves 10, 20, 30, 35 and 40. Every run earns eggs for the skill tree.")); }
+        if (!save.seen) { card.appendChild(el("p", "cb-help", "Bugs march down the road toward your nest. Pick a reptile below the map, tap the ground beside the road to place it, then Start wave. Click a reptile to upgrade it down two of its three paths. Dinosaurs show up at waves 10, 20, 30, 35 and 40 — each one you survive drops eggs on the spot, so you can hit ☰ → Skill tree mid-run and come right back stronger.")); }
         overlay.appendChild(card);
       }
       function drawMapPreview(cv, m) { const gg = cv.getContext("2d"), W = cv.width, H = cv.height; const grd = gg.createLinearGradient(0, 0, W, H); grd.addColorStop(0, m.ground[0]); grd.addColorStop(1, m.ground[1]); gg.fillStyle = grd; gg.fillRect(0, 0, W, H); (m.water || []).forEach((w) => { gg.fillStyle = "#17405a"; gg.beginPath(); gg.ellipse(w[0] * W, w[1] * H, w[2] * W, w[3] * H, 0, 0, TAU); gg.fill(); }); (m.lava || []).forEach((w) => { gg.fillStyle = "#ff6b2a"; gg.beginPath(); gg.ellipse(w[0] * W, w[1] * H, w[2] * W, w[3] * H, 0, 0, TAU); gg.fill(); }); [m.path].concat(m.path2 ? [m.path2] : []).forEach((P) => { gg.strokeStyle = m.glow; gg.lineWidth = 9; gg.lineCap = "round"; gg.lineJoin = "round"; gg.globalAlpha = 0.35; gg.beginPath(); P.forEach((p, i) => (i ? gg.lineTo(p[0] * W, p[1] * H) : gg.moveTo(p[0] * W, p[1] * H))); gg.stroke(); gg.globalAlpha = 1; gg.strokeStyle = m.road; gg.lineWidth = 6; gg.stroke(); }); }
@@ -877,7 +889,8 @@
       function showTree() {
         screen = "tree"; renderUI(); overlay.innerHTML = ""; overlay.style.display = ""; overlay.classList.add("menu"); overlay.classList.add("tree"); overlay.scrollTop = 0;
         const card = el("div", "cb-card-big cb-treecard");
-        const top = el("div", "cb-menu-top"); top.appendChild(el("h2", null, "Skill tree")); const eggsEl = el("div", "cb-eggs", "🥚 " + save.eggs); top.appendChild(eggsEl); const back = el("button", "btn ghost", "← Maps"); back.onclick = () => { tree = null; showMenu(); }; top.appendChild(back); card.appendChild(top);
+        const top = el("div", "cb-menu-top"); top.appendChild(el("h2", null, "Skill tree")); const eggsEl = el("div", "cb-eggs", "🥚 " + save.eggs); top.appendChild(eggsEl); if (save.run) { const r = save.run; const cont = el("button", "btn cb-treecont", "▶ Back to run · wave " + r.wave); cont.onclick = () => { tree = null; overlay.style.display = "none"; overlay.classList.remove("tree"); newRun(r.mapIdx, r.diffIdx, r); }; top.appendChild(cont); }
+        const back = el("button", "btn ghost", "← Maps"); back.onclick = () => { tree = null; showMenu(); }; top.appendChild(back); card.appendChild(top);
         const owned = Object.keys(save.nodes).filter((k) => save.nodes[k]).length, nextR = REBIRTH_PERKS[Math.min(save.rebirth || 0, REBIRTH_PERKS.length - 1)], canR = owned >= REBIRTH_NEED && (save.rebirth || 0) < REBIRTH_PERKS.length;
         const rbBtn = el("button", "btn cb-rbbtn" + (canR ? " ready" : "")); rbBtn.innerHTML = (save.rebirth >= REBIRTH_PERKS.length ? "✦ Max rebirth" : "✦ Rebirth " + ((save.rebirth || 0) + 1)) + "<small>" + (save.rebirth >= REBIRTH_PERKS.length ? "every legend unlocked" : canR ? "ready — unlock " + TOWERS[nextR.reptile].name : owned + " / " + REBIRTH_NEED + " nodes") + "</small>"; rbBtn.onclick = () => showRebirth(); top.appendChild(rbBtn);
         const nav = el("div", "cb-treenav"); Object.keys(BRANCH).forEach((br) => { const b = el("button", "cb-branchbtn", br); b.style.setProperty("--bc", BRANCH[br].col); const owned = TREE.filter((nd) => nd.branch === br && save.nodes[nd.id]).length, total = TREE.filter((nd) => nd.branch === br).length; b.innerHTML = br + "<small>" + owned + " / " + total + "</small>"; b.onclick = () => flyTo(br); nav.appendChild(b); }); const hint = el("div", "cb-treehint", "drag to look around · wheel / pinch to zoom · tap a node"); nav.appendChild(hint); card.appendChild(nav);
@@ -943,7 +956,7 @@
       }
       function buyNode(nd) {
         if (save.nodes[nd.id] || save.eggs < nd.cost || (nd.req && !save.nodes[nd.req])) { sndNo(); return; }
-        save.eggs -= nd.cost; save.nodes[nd.id] = true; meta = metaFromNodes(save.nodes); persist();
+        save.eggs -= nd.cost; save.nodes[nd.id] = true; meta = metaFromNodes(save.nodes, save.rebirth); persist();
         const q = tree.nodes[nd.id], from = nd.req ? tree.nodes[nd.req] : { x: 0, y: 0 };
         tree.fx.push({ kind: "pulse", x0: from.x, y0: from.y, x1: q.x, y1: q.y, t: 0, dur: 520, col: BRANCH[nd.branch].col, id: nd.id });
         A().arp([392, 523, 659, 784], { dur: 0.14, step: 0.07, vol: 0.1, type: "triangle" });
@@ -1016,12 +1029,12 @@
         // branch compass labels at the edges
         Object.keys(BRANCH).forEach((br) => { const B = BRANCH[br]; const ids = TREE.filter((nd) => nd.branch === br); const owned = ids.filter((nd) => save.nodes[nd.id]).length; const a = B.ang; const x = W / 2 + Math.cos(a) * (Math.min(W, H) / 2 - 26), y = H / 2 + Math.sin(a) * (H / 2 - 22); g2.fillStyle = rgba(B.col, 0.85); g2.font = "800 11px system-ui"; g2.textAlign = "center"; g2.textBaseline = "middle"; g2.fillText(br.toUpperCase() + " " + owned + "/" + ids.length, x, y); });
       }
-      function showEnd(victory, cleared, eggs, prevBest) {
+      function showEnd(victory, cleared, eggs, prevBest, banked) {
         overlay.innerHTML = ""; overlay.style.display = ""; overlay.classList.remove("menu"); overlay.classList.remove("tree");
         const card = el("div", "cb-card-big cb-end");
         card.appendChild(el("h2", null, victory ? "🏆 The nest is safe!" : "The nest fell."));
         card.appendChild(el("p", "cb-endline", (victory ? "You cleared all 40 waves of " : "You held ") + map.name + " (" + diff.name + ")" + (victory ? "." : " for " + cleared + " wave" + (cleared === 1 ? "" : "s") + ".") + (cleared > prevBest ? "  New best!" : "")));
-        const eg = el("div", "cb-endeggs"); eg.innerHTML = "<b>+" + eggs + " 🥚</b><small>eggs earned · " + save.eggs + " total</small>"; card.appendChild(eg);
+        const eg = el("div", "cb-endeggs"); eg.innerHTML = "<b>+" + eggs + " 🥚</b><small>" + (banked ? "eggs at the end · " + banked + " more were banked at boss checkpoints · " : "eggs earned · ") + save.eggs + " total</small>"; card.appendChild(eg);
         const row = el("div", "btn-row");
         if (victory) { const keep = el("button", "btn", "Keep going (freeplay)"); keep.onclick = () => { overlay.style.display = "none"; freeplay = true; won = false; paused = false; screen = "game"; renderUI(); }; row.appendChild(keep); }
         const again = el("button", "btn" + (victory ? " ghost" : ""), "Play again"); again.onclick = () => { overlay.style.display = "none"; newRun(MAPS.indexOf(map), DIFFS.indexOf(diff), null); }; row.appendChild(again);
@@ -1072,7 +1085,7 @@
           keyFn = (e) => { if (screen !== "game") return; if (e.key === " ") { e.preventDefault(); if (waveActive) { if (diff.id === "hard" && !paused) { toast("Hard mode: no pausing while bugs are on the road", "#ff8fa3"); return; } paused = !paused; } else startWave(); renderHud(); } else if (/^[1-9]$/.test(e.key)) { const type = Object.keys(TOWERS)[+e.key - 1]; if (type && unlocked(type)) { placing = placing === type ? null : type; selected = null; renderPanel(); } } else if (e.key === "Escape" || e.key.toLowerCase() === "q") { placing = null; selected = null; renderPanel(); } else if (e.key.toLowerCase() === "s" && selected) sellTower(selected); };
           window.addEventListener("keydown", keyFn);
           showMenu();
-          Arcade._cb = { get: () => ({ screen, map: map && map.id, diff: diff && diff.id, cash, lives, wave, waveActive, towers: towers.map((t) => ({ type: t.type, x: t.x, y: t.y, tiers: t.tiers, kills: t.kills, bank: t.bank, patrol: t.patrol })), enemies: enemies.length, speed, paused, autoNext, water: map ? map.water : [], S, eggs: save.eggs, nodes: Object.keys(save.nodes), paths: paths.map((P) => P.pts) }), cheat: (o) => { if (o.cash != null) cash = o.cash; if (o.eggs != null) { save.eggs = o.eggs; persist(); } if (o.wave != null) wave = o.wave; if (o.rebirth != null) { save.rebirth = o.rebirth; meta = metaFromNodes(save.nodes, save.rebirth); persist(); } if (o.allNodes) { TREE.forEach((nd) => { save.nodes[nd.id] = true; }); meta = metaFromNodes(save.nodes, save.rebirth); persist(); } renderUI(); }, rebirth: () => doRebirth(), treeFx: () => tree && tree.fx.length, elites: () => enemies.filter((e) => e.elite).map((e) => e.elite), act: { startWave, place, upgrade: (i, pi) => upgrade(towers[i], pi), select: (i) => { selected = towers[i]; renderPanel(); }, newRun, showMenu, showTree, setSpeed: (v) => { speed = v; }, endRun, selectNode, roots: TREE.filter((nd) => !nd.req).map((nd) => nd.id) } };
+          Arcade._cb = { get: () => ({ screen, map: map && map.id, diff: diff && diff.id, cash, lives, wave, waveActive, towers: towers.map((t) => ({ type: t.type, x: t.x, y: t.y, tiers: t.tiers, kills: t.kills, bank: t.bank, patrol: t.patrol })), enemies: enemies.length, speed, paused, autoNext, water: map ? map.water : [], S, eggs: save.eggs, runEggs, nodes: Object.keys(save.nodes), paths: paths.map((P) => P.pts) }), cheat: (o) => { if (o.cash != null) cash = o.cash; if (o.eggs != null) { save.eggs = o.eggs; persist(); } if (o.wave != null) wave = o.wave; if (o.rebirth != null) { save.rebirth = o.rebirth; meta = metaFromNodes(save.nodes, save.rebirth); persist(); } if (o.allNodes) { TREE.forEach((nd) => { save.nodes[nd.id] = true; }); meta = metaFromNodes(save.nodes, save.rebirth); persist(); } renderUI(); }, rebirth: () => doRebirth(), treeFx: () => tree && tree.fx.length, elites: () => enemies.filter((e) => e.elite).map((e) => e.elite), act: { startWave, place, upgrade: (i, pi) => upgrade(towers[i], pi), select: (i) => { selected = towers[i]; renderPanel(); }, newRun, showMenu, showTree, setSpeed: (v) => { speed = v; }, endRun, selectNode, roots: TREE.filter((nd) => !nd.req).map((nd) => nd.id) } };
           draw();
         },
         handleInput(intent) { if (intent.type !== "point" || (intent.el && intent.el !== canvas)) return; if (intent.phase === "move") onMove(intent.x, intent.y); else if (intent.phase === "down") onDown(intent.x, intent.y, intent.button); },
@@ -1117,7 +1130,7 @@
 .cb-overlay{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;z-index:5;overflow-y:auto;padding:6px}.cb-overlay.menu{padding-top:min(24vh,190px)}.cb-overlay.menu.tree{padding-top:6px}
 .cb-card-big{width:min(880px,100%);background:rgba(14,11,26,.94);border:1px solid rgba(127,224,160,.35);border-radius:22px;padding:18px 20px;box-shadow:0 0 60px rgba(127,224,160,.12);backdrop-filter:blur(6px)}
 .cb-menu-top{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}.cb-menu-top h2{margin:0;font-size:22px;flex:1}.cb-eggs{font-weight:800;color:#ffd36b;font-size:18px}
-.cb-continue{width:100%;margin-bottom:10px;background:#ffd36b!important;color:#0e0c1e!important}
+.cb-continue{width:100%;margin-bottom:10px;background:#ffd36b!important;color:#0e0c1e!important}.cb-treecont{background:#ffd36b!important;color:#0e0c1e!important}
 .cb-maps{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:12px}
 .cb-map{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:6px;color:#e6ecf5;font:inherit;cursor:pointer;text-align:left}.cb-map canvas{width:100%;height:auto;border-radius:10px;display:block}.cb-map.on{border-color:var(--mc);box-shadow:0 0 18px color-mix(in srgb,var(--mc) 40%,transparent)}.cb-map-name b{display:block;font-size:13px;margin-top:6px}.cb-map-name small{opacity:.6;font-size:11px;display:block}.cb-map-name i{font-style:normal;font-size:11px;color:#ffd36b;display:block}
 .cb-diffs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}.cb-diff{flex:1;min-width:120px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:8px;color:#e6ecf5;font:inherit;cursor:pointer}.cb-diff b{display:block}.cb-diff small{opacity:.6;font-size:11px}.cb-diff.on{border-color:#7fe0a0;background:rgba(127,224,160,.14)}
@@ -1130,7 +1143,7 @@
 .cb-treeholder{position:relative}.cb-treecv{display:block;border-radius:16px;border:1px solid rgba(255,255,255,.1);touch-action:none;cursor:grab;width:100%}
 .cb-treedetail{position:absolute;left:12px;right:12px;bottom:12px;background:rgba(10,8,22,.9);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;backdrop-filter:blur(6px);display:flex;flex-direction:column;gap:6px;max-width:460px;margin:0 auto}
 .cb-td-head{display:flex;align-items:center;gap:10px}.cb-td-head b{display:block;font-size:16px}.cb-td-head small{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase}.cb-td-desc{margin:0;opacity:.85;font-size:13px}.cb-td-row{display:flex;gap:8px}.cb-td-buy{flex:1;font-size:14px!important}.cb-td-buy.off{opacity:.5}.cb-td-owned{color:#7fe0a0;font-weight:800}.cb-td-empty{opacity:.6;font-size:13px}
-.cb-eggs.pop{animation:cbeggpop .5s}@keyframes cbeggpop{0%{transform:scale(1)}30%{transform:scale(1.35);color:#fff}100%{transform:scale(1)}}
+.cb-eggs.pop{animation:cbeggpop .5s}.cb-hudeggs b{color:#ffd36b}.cb-hudeggs.pop{animation:cbeggpop .7s}@keyframes cbeggpop{0%{transform:scale(1)}30%{transform:scale(1.35);color:#fff}100%{transform:scale(1)}}
 @media (max-width:899px){.cb-treehint{display:none}.cb-treedetail{left:6px;right:6px;bottom:6px;padding:8px}}
 .cb-rbbtn{background:rgba(255,255,255,.06)!important;color:#e6ecf5!important;display:flex;flex-direction:column;line-height:1.1;padding:6px 12px!important}.cb-rbbtn small{font-size:10px;opacity:.65;font-weight:600}.cb-rbbtn.ready{background:linear-gradient(135deg,#ffd36b,#ff8f3d)!important;color:#0e0c1e!important;animation:cbpulse 1.2s infinite;--tc:#ffd36b}.cb-rbbtn.ready small{opacity:.8}
 .cb-rbmodal{position:fixed;inset:0;background:rgba(6,5,14,.8);display:flex;align-items:center;justify-content:center;z-index:9;border-radius:22px}.cb-rbcard{width:min(520px,94%);background:#14112a;border:1px solid rgba(255,211,107,.5);border-radius:20px;padding:18px 20px;box-shadow:0 0 60px rgba(255,211,107,.2);text-align:center}.cb-rbcard h2{margin:0 0 6px;color:#ffd36b}
