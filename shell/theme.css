@@ -213,6 +213,7 @@ html, body {
   position: relative;
   display: flex;
   align-items: center;
+  align-items: safe center;   /* content taller than the stage grows DOWN (scroll) instead of overflowing up under the header */
   justify-content: center;
   padding: 8px 20px 28px;
   min-height: 0;

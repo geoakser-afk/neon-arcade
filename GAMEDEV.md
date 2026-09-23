@@ -137,6 +137,13 @@ phrase list), run `node tools/elevenlabs-tts/gen.mjs`, commit the new `.mp3`s. K
 shapes, "Find the" …) so combos don't explode. This is the one exception to "no audio files": speech can't be synthesized
 from oscillators, and running a TTS model in the browser would mean a huge download before a 5-year-old hears anything.
 
+## Browser history (shell/shell.js)
+The shell owns the URL. Hub = one history entry; every launched game pushes one more (`#g/<id>`, or `#kids/<id>` in kid
+mode; entering kid mode pushes `#kids`). Browser BACK from a game returns to the hub instead of leaving the site, FORWARD
+re-opens the game, and `#g/<id>` links deep-link straight into a game with the hub underneath. Games never touch
+`history`/`location.hash` themselves — `Arcade.shell.toHub()` / `launch()` do the right thing. Also: `#stage` uses
+`align-items: safe center`, so a game menu taller than the viewport scrolls down instead of sliding up under the header.
+
 ## Accounts + multiplayer (shell/auth.js, shell/net.js, server/)
 - **Nothing requires an account except multiplayer.** `Arcade.auth` (Clerk, loaded lazily over http/https only) exposes
   `ready`, `available()`, `isSignedIn()`, `user() → {id,name,avatar}`, `token()`, `signIn()`. The header shows a

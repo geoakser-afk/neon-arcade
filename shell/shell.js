@@ -25,7 +25,7 @@
     hud = el("div", "hud");
     const left = el("div", "hud-left");
     backBtn = el("button", "back-btn hidden", "‹ Arcade");
-    backBtn.onclick = toHub;
+    backBtn.onclick = () => toHub();
     brandEl = el("div", "brand", 'NEON <span>ARCADE</span>');
     left.appendChild(backBtn); left.appendChild(brandEl);
 
@@ -207,7 +207,16 @@
   }
 
   // ---- hub ----
-  function toHub() {
+  // Browser history: the hub is one entry, each launched game is one more (#g/<id>, or #kids/<id> in kid mode).
+  // Browser back from a game returns to the hub instead of leaving the site; forward re-opens the game.
+  let pendingHub = null;
+  function gameHash(id) { return (kidMode ? "#kids/" : "#g/") + id; }
+  function hubHash() { return kidMode ? "#kids" : location.href.split("#")[0]; }
+  function toHub(fromHist) {
+    if (!fromHist && current && history.state && history.state.g) {
+      // let the browser pop the game entry; popstate finishes the job (fallback timer in case it never fires)
+      try { clearTimeout(pendingHub); pendingHub = setTimeout(() => toHub(true), 400); history.back(); return; } catch (e) {}
+    }
     if (current) teardownCurrent();
     input.clearHandler();
     board.clear();
@@ -226,16 +235,27 @@
     sessionStarted = true;           // free play — never show the fuse prompt to a 5-year-old
     timer.noGlobal();
     document.body.classList.add("kid");
-    try { if (location.hash !== "#kids" && location.hash !== "#chris") history.replaceState(null, "", "#kids"); } catch (e) {}
+    try { if (location.hash !== "#kids" && location.hash !== "#chris") history.pushState({ kids: true }, "", "#kids"); } catch (e) {}
     audio.arp([523, 659, 784, 1046], { dur: 0.16, step: 0.07, vol: 0.14, type: "sine" });
-    toHub();
+    toHub(true);
   }
-  function exitKidMode() {
+  function exitKidMode(fromHist) {
+    if (!fromHist && history.state && history.state.kids) { try { clearTimeout(pendingHub); pendingHub = setTimeout(() => exitKidMode(true), 400); history.back(); return; } catch (e) {} }
     kidMode = false;
     document.body.classList.remove("kid");
-    try { if (location.hash) history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
-    toHub();
+    try { if (location.hash) history.replaceState({ hub: true }, "", location.href.split("#")[0]); } catch (e) {}
+    toHub(true);
   }
+  window.addEventListener("popstate", (e) => {
+    clearTimeout(pendingHub);
+    const st = e.state || {}, h = location.hash;
+    const wantKid = !!st.kids || /^#(kids|chris)/.test(h);
+    if (wantKid !== kidMode) { kidMode = wantKid; document.body.classList.toggle("kid", wantKid); if (wantKid) { sessionStarted = true; timer.noGlobal(); } }
+    const hm = /^#(?:kids|chris|g)\/([a-z0-9_-]+)$/i.exec(h), hid = hm && A.gameById(hm[1]) ? hm[1] : null;
+    if (st.g && A.gameById(st.g)) launch(st.g, st.o || null, true);
+    else if (hid) { try { history.replaceState({ g: hid }, "", h); } catch (e2) {} launch(hid, null, true); }   // typed / pasted #g/<id> link
+    else toHub(true);
+  });
   // draw a game's picture icon into a canvas (games provide kidIcon(g, size))
   function kidIconCanvas(g, size) {
     const c = document.createElement("canvas");
@@ -443,9 +463,13 @@
   }
 
   // ---- launch a game ----
-  function launch(id, opts) {
+  function launch(id, opts, fromHist) {
     const def = A.gameById(id);
     if (!def) return;
+    if (!fromHist) {
+      try { history.pushState({ g: id, o: opts || null }, "", gameHash(id)); }
+      catch (e) { try { history.pushState({ g: id }, "", gameHash(id)); } catch (e2) {} }
+    }
     if (current) teardownCurrent();
     launchOpts = opts || null;
 
@@ -593,8 +617,12 @@
   // ---- boot ----
   function boot() {
     build();
-    if (location.hash === "#kids" || location.hash === "#chris") { kidMode = true; sessionStarted = true; timer.noGlobal(); document.body.classList.add("kid"); }
-    toHub();
+    const m = /^#(kids|chris|g)(?:\/([a-z0-9_-]+))?$/i.exec(location.hash || "");
+    const kid = !!m && m[1] !== "g", deep = m && m[2] && A.gameById(m[2]) ? m[2] : null;
+    if (kid) { kidMode = true; sessionStarted = true; timer.noGlobal(); document.body.classList.add("kid"); }
+    try { history.replaceState(kid ? { kids: true } : { hub: true }, "", kid ? "#kids" : location.href.split("#")[0]); } catch (e) {}
+    toHub(true);
+    if (deep) launch(deep);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

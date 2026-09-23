@@ -1,7 +1,7 @@
 /* COLD BLOOD — reptile tower defense. Bugs (and, at the milestone waves, dinosaurs) march down a winding
    road toward your nest; you place cold-blooded defenders beside the road and grow them down upgrade paths.
    Five themed maps, nine reptiles (four unlock through the egg skill tree), three upgrade paths × three tiers
-   each (two paths per tower), targeting modes, 1×/2×/3× speed, 40 waves then freeplay, four boss waves.
+   each (two paths per tower), targeting modes, ½×/1×/2×/3× speed, 40 waves then freeplay, four boss waves.
    Eggs earned every run feed a persistent skill tree (cloud-synced). Per-map leaderboards on the end screen. */
 (function () {
   const TAU = Math.PI * 2;
@@ -34,7 +34,7 @@
       lava: [[0.5, 0.68, 0.12, 0.06], [0.5, 0.42, 0.14, 0.06]], rocks: [[0.08, 0.1, 0.06], [0.92, 0.9, 0.06]], decor: "ember" },
     { id: "ruins", name: "Serpent Temple", sub: "spiral · brutal", diff: 2, ground: ["#141026", "#1f1838"], road: "#3c3560", glow: "#c98cff", accent: "#c98cff",
       path: [[0, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9], [0.1, 0.28], [0.72, 0.28], [0.72, 0.72], [0.28, 0.72], [0.28, 0.46], [0.5, 0.46], [0.5, 0.58]],
-      water: [], rocks: [[0.5, 0.5, 0.0]], decor: "rune" }
+      water: [[0.19, 0.81, 0.05, 0.045], [0.81, 0.5, 0.045, 0.11]], rocks: [[0.5, 0.5, 0.0]], decor: "rune" }
   ];
   const DIFFS = [{ id: "easy", name: "Easy", hp: 0.8, cash: 1.15, lives: 30, start: 800, eggs: 1 }, { id: "normal", name: "Normal", hp: 1, cash: 1, lives: 20, start: 650, eggs: 1.5 }, { id: "hard", name: "Hard", hp: 1.35, cash: 0.85, lives: 10, start: 550, eggs: 2.2 }, { id: "apoc", name: "Apocalypse", hp: 3, cash: 1.6, lives: 15, start: 900, eggs: 4, elite: 0.3, needRebirth: 5 }];
 
@@ -107,7 +107,7 @@
     { n: 4, reptile: "titanoboa", perk: "sell towers for 100%", m: (m) => { m.sell = Math.max(m.sell, 1); } },
     { n: 5, reptile: "ancientdragon", perk: "unlocks APOCALYPSE difficulty (elite bugs with special abilities)", m: (m) => { m.apocalypse = true; } }
   ];
-  const REBIRTH_NEED = 17;   // nodes owned to allow a rebirth (of 21)
+  const REBIRTH_NEED = 19;   // nodes owned to allow a rebirth (of 21)
   // elite abilities (Apocalypse: 30% of bugs from wave 3; freeplay past 40: 15%)
   const ELITES = {
     shield: { name: "Shielded", col: "#74b9ff", d: "+8 armor, regenerates" },
@@ -223,10 +223,12 @@
     { id: "basilisk", branch: "Unlocks", name: "Basilisk", cost: 70, d: "unlock the stone gaze", req: "croc", m: (m) => { m.unlocked.basilisk = true; } },
     { id: "ptero", branch: "Unlocks", name: "Pterodactyl", cost: 100, d: "unlock the sky hunter", req: "basilisk", m: (m) => { m.unlocked.ptero = true; } },
     { id: "trex", branch: "Unlocks", name: "T-Rex", cost: 160, d: "unlock the king", req: "ptero", m: (m) => { m.unlocked.trex = true; } },
-    { id: "ff", branch: "Unlocks", name: "Fast Forward", cost: 10, d: "3× game speed", req: null, m: (m) => { m.speed3 = true; } }
+    { id: "ff", branch: "Unlocks", name: "Fast Forward", cost: 10, d: "3× game speed", req: null, m: (m) => { m.speed3 = true; } },
+    { id: "slowmo", branch: "Unlocks", name: "Slow Motion", cost: 15, d: "½× game speed — watch every bite land", req: "ff", m: (m) => { m.speedHalf = true; } },
+    { id: "quickfeet", branch: "Unlocks", name: "Quick Feet", cost: 45, d: "move reptiles mid-wave, no pause needed (short settle after a move)", req: "slowmo", m: (m) => { m.freeMove = true; } }
   ];
   function metaFromNodes(nodes, rebirth) {
-    const m = { startCash: 0, cashMul: 1, sell: 0.7, waveCash: 0, dmgMul: 1, dotMul: 1, rangeMul: 1, t3disc: 0, lives: 0, heal10: 0, slowAll: 0, bossLeakHalf: false, unlocked: {}, speed3: false, eggMul: 1, apocalypse: false, rebirth: rebirth || 0 };
+    const m = { startCash: 0, cashMul: 1, sell: 0.7, waveCash: 0, dmgMul: 1, dotMul: 1, rangeMul: 1, t3disc: 0, lives: 0, heal10: 0, slowAll: 0, bossLeakHalf: false, unlocked: {}, speed3: false, speedHalf: false, freeMove: false, eggMul: 1, apocalypse: false, rebirth: rebirth || 0 };
     TREE.forEach((n) => { if (nodes[n.id]) n.m(m); });
     REBIRTH_PERKS.forEach((r) => { if ((rebirth || 0) >= r.n) r.m(m); });
     return m;
@@ -452,14 +454,16 @@
         if (T && T.fly) return null;
         if (distToRoad(x, y) < roadW() / 2 + r * 0.8) return "road";
         const inside = (w, pad) => { const dx = (x - w[0] * S) / (w[2] * S + pad), dy = (y - w[1] * S) / (w[3] * S + pad); return dx * dx + dy * dy < 1; };
-        for (const w of (map.lava || [])) if (inside(w, r)) return "lava";
-        const inWater = (map.water || []).some((w) => inside(w, r)), deepWater = (map.water || []).some((w) => inside(w, -r * 0.6));
+        const swims = !!(T && (T.water || T.waterOnly));
+        for (const w of (map.lava || [])) if (inside(w, r) && !swims) return "lava";   // lava pools count as water for swimmers (heat-proof scales)
+        const pools = (map.water || []).concat(map.lava || []);
+        const inWater = pools.some((w) => inside(w, r)), deepWater = pools.some((w) => inside(w, -r * 0.6));
         if (T && T.waterOnly) { if (!deepWater) return "land"; }
-        else if (inWater && !(T && T.water)) return "water";
+        else if (inWater && !swims) return "water";
         for (const k of (map.rocks || [])) { if (k[2] > 0 && dist(x, y, k[0] * S, k[1] * S) < k[2] * S + r) return "rock"; }
         return null;
       }
-      function blockMsg(why, T) { return why === "road" ? "Not on the road!" : why === "water" ? (T && T.name) + " can't swim — build on land" : why === "land" ? (T && T.name) + " lives in WATER — tap a pond" : why === "lava" ? "That's lava." : why === "tower" ? "Too close to another reptile" : "Can't build there"; }
+      function blockMsg(why, T) { return why === "road" ? "Not on the road!" : why === "water" ? (T && T.name) + " can't swim — build on land" : why === "land" ? (T && T.name) + " lives in WATER — tap a pond" + (map.lava && map.lava.length && !(map.water || []).length ? " (lava pools count here)" : "") : why === "lava" ? "That's lava." : why === "tower" ? "Too close to another reptile" : "Can't build there"; }
       function towerR(t) { return S * (t.type === "trex" ? 0.05 : t.type === "croc" || t.type === "komodo" ? 0.04 : 0.033); }
 
       // ---------- run setup ----------
@@ -487,7 +491,7 @@
         const T = TOWERS[type]; if (!unlocked(type)) return; const r = S * 0.033;
         if (cash < T.cost) { toast("Not enough cash for " + T.name, "#ff8fa3"); sndNo(); return false; }
         const why = blocked(x, y, r, type); if (why) { toast(blockMsg(why, T), "#ff8fa3"); sndNo(); return false; }
-        cash -= T.cost; const t = mkTower(type, x, y); t.spawnT = 1; towers.push(t); statsDirty = true; if (!placing) selected = t; sndPlace(); A().tone(140, 0.12, { type: "triangle", vol: 0.08, glide: 60 }); burst(x, y, T.col, 22); burst(x, y, "#c8b89a", 10); ring(x, y, S * 0.09, T.col, 450); ring(x, y, S * 0.05, "#ffffff", 250); floaters.push({ x, y: y - S * 0.05, text: "-$" + T.cost, col: "#ffd36b", t: 0 }); floaters.push({ x, y: y - S * 0.09, text: T.name.toUpperCase() + " DEPLOYED", col: T.col, t: 0, big: true }); shakeT = Math.max(shakeT, 140); renderUI(); return true;
+        cash -= T.cost; const t = mkTower(type, x, y); t.spawnT = 1; towers.push(t); statsDirty = true; if (!placing) selected = t; dropFx(t, x, y, false); floaters.push({ x, y: y - S * 0.05, text: "-$" + T.cost, col: "#ffd36b", t: 0 }); floaters.push({ x, y: y - S * 0.09, text: T.name.toUpperCase() + " DEPLOYED", col: T.col, t: 0, big: true }); shakeT = Math.max(shakeT, 140); renderUI(); return true;
       }
 
       // ---------- sounds ----------
@@ -506,6 +510,28 @@
       // ---------- fx ----------
       function burst(x, y, col, n) { const m = lowFx() ? Math.ceil(n / 3) : n; for (let i = 0; i < m; i++) { const a = Math.random() * TAU, sp = S * (0.0002 + Math.random() * 0.0005); fx.push({ kind: "p", x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: 0, dur: 300 + Math.random() * 300, col, r: S * (0.003 + Math.random() * 0.004) }); } }
       function ring(x, y, r, col, dur) { fx.push({ kind: "ring", x, y, r, col, t: 0, dur: dur || 350 }); }
+      // gravity particles that bounce on the ground line (splashes, eggs, rubble)
+      function gpart(x, y, col, n, spread, up) { const m = lowFx() ? Math.ceil(n / 3) : n; for (let i = 0; i < m; i++) { const sp = S * 0.0006; fx.push({ kind: "pg", x, y, y0: y + S * 0.01, vx: (Math.random() - 0.5) * sp * (spread || 1.6), vy: -(0.5 + Math.random()) * sp * (up || 1.2), g: S * 0.0000032, t: 0, dur: 550 + Math.random() * 350, col, r: S * (0.003 + Math.random() * 0.005) }); } }
+      function inPool(x, y) { const chk = (w) => { const dx = (x - w[0] * S) / (w[2] * S), dy = (y - w[1] * S) / (w[3] * S); return dx * dx + dy * dy < 1; }; if ((map.lava || []).some(chk)) return "lava"; if ((map.water || []).some(chk)) return "water"; return null; }
+      // every reptile lands its own way — the drop is part of its personality (also used for MOVE)
+      function dropFx(t, x, y, moved) {
+        const T = TOWERS[t.type], k = T.kind, col = T.col, pool = inPool(x, y);
+        shakeT = Math.max(shakeT, 120);
+        if (pool) { gpart(x, y, pool === "lava" ? "#ff8f3d" : "#74b9ff", 22, 2.2, 1.4); ring(x, y, S * 0.08, pool === "lava" ? "#ffb86b" : "#9fe3ff", 500); ring(x, y, S * 0.05, "#fff", 250); fx.push({ kind: "splash", x, y, col: pool === "lava" ? "#ff6b4d" : "#74b9ff", t: 0, dur: 520 }); A().tone(pool === "lava" ? 90 : 320, 0.22, { type: "sine", vol: 0.09, glide: pool === "lava" ? 40 : 120 }); }
+        if (T.fly) { fx.push({ kind: "swoop", x, y, col, t: 0, dur: 620 }); burst(x, y, "#ffffff", 10); ring(x, y, S * 0.07, col, 400); A().tone(880, 0.3, { type: "sine", vol: 0.06, glide: 220 }); sndPlace(); return; }
+        if (k === "dart") { for (let i = 0; i < 3; i++) fx.push({ kind: "ring", x, y, r: S * (0.04 + i * 0.025), col, t: -i * 70, dur: 320 }); burst(x, y, col, 16); fx.push({ kind: "zigzag", x, y, col, t: 0, dur: 380 }); A().tone(520, 0.08, { type: "square", vol: 0.05, glide: 1040 }); }
+        else if (k === "spray") { for (let i = 0; i < 3; i++) fx.push({ kind: "cone", x, y, r: S * 0.11, ang: i * TAU / 3 + now * 0.001, cone: 0.45, col, t: 0, dur: 420 + i * 60 }); burst(x, y, "#9aa0a6", 12); burst(x, y, col, 10); A().tone(300, 0.25, { type: "sawtooth", vol: 0.05, glide: 120 }); }
+        else if (k === "beam") { fx.push({ kind: "pillar", x, y, col, t: 0, dur: 700 }); ring(x, y, S * 0.06, "#fff", 300); burst(x, y, col, 14); A().tone(660, 0.35, { type: "sine", vol: 0.07, glide: 1320 }); }
+        else if (k === "bite") { fx.push({ kind: "crack", x, y, col, t: 0, dur: 650, n: 7 }); if (!pool) gpart(x, y, "#a08a6a", 16, 2, 0.9); ring(x, y, S * 0.07, col, 380); shakeT = Math.max(shakeT, 200); A().tone(110, 0.18, { type: "triangle", vol: 0.1, glide: 50 }); }
+        else if (k === "slam") { ring(x, y, S * 0.14, col, 520); ring(x, y, S * 0.09, "#fff", 330); fx.push({ kind: "crack", x, y, col, t: 0, dur: 800, n: 10 }); gpart(x, y, "#8a7a5a", 30, 2.6, 1.3); shakeT = Math.max(shakeT, 340); A().tone(60, 0.5, { type: "sawtooth", vol: 0.13, glide: 30 }); }
+        else if (k === "aura") { fx.push({ kind: "ring", x, y, r: S * 0.16, col, t: 0, dur: 900 }); fx.push({ kind: "ring", x, y, r: S * 0.1, col, t: -200, dur: 900 }); for (let i = 0; i < 14; i++) fx.push({ kind: "pg", x: x + (Math.random() - 0.5) * S * 0.12, y: y + (Math.random() - 0.5) * S * 0.06, y0: y + S * 0.1, vx: 0, vy: -S * 0.00025 * (0.6 + Math.random()), g: 0, t: 0, dur: 900 + Math.random() * 400, col: "#fff", r: S * 0.003 }); A().arp([392, 494, 587], { dur: 0.3, step: 0.1, vol: 0.06, type: "sine" }); }
+        else if (k === "chain") { for (let b = 0; b < 2; b++) { const pts = []; for (let i = 0; i <= 6; i++) pts.push({ x: x + (i < 6 ? (Math.random() - 0.5) * S * 0.05 : 0) + (b ? S * 0.03 : -S * 0.03) * (1 - i / 6), y: y - S * 0.42 * (1 - i / 6) }); fx.push({ kind: "bolt", x, y, pts, col, t: -b * 90, dur: 380 }); } ring(x, y, S * 0.08, "#fff", 260); burst(x, y, col, 18); shakeT = Math.max(shakeT, 220); A().tone(1200, 0.15, { type: "square", vol: 0.06, glide: 200 }); }
+        else if (k === "coil") { fx.push({ kind: "spiral", x, y, col, t: 0, dur: 800 }); ring(x, y, S * 0.1, col, 600); burst(x, y, col, 12); A().tone(200, 0.4, { type: "triangle", vol: 0.08, glide: 90 }); }
+        else if (k === "meteor") { fx.push({ kind: "meteor", x, y, t: 0, dur: 700 }); fx.push({ kind: "ring", x, y, r: S * 0.12, col: "#ff8f3d", t: -300, dur: 700 }); gpart(x, y, "#ff6b4d", 20, 2.4, 1.5); shakeT = Math.max(shakeT, 380); A().tone(70, 0.5, { type: "sawtooth", vol: 0.12, glide: 25 }); }
+        else if (k === "farm") { gpart(x, y, "#ffd36b", 18, 2, 1.6); gpart(x, y, "#fff7d6", 8, 1.6, 1.2); ring(x, y, S * 0.09, "#ffd36b", 500); A().arp([784, 988, 1175, 1568], { dur: 0.12, step: 0.06, vol: 0.07, type: "triangle" }); }
+        else { burst(x, y, col, 22); ring(x, y, S * 0.09, col, 450); }
+        if (!moved) sndPlace();
+      }
       function toast(text, col) { if (!toastEl) return; toastEl.textContent = text; toastEl.style.color = col || "#e6ecf5"; toastEl.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove("on"), 2200); }
 
       // ---------- waves ----------
@@ -655,13 +681,13 @@
           if (d <= stepL + s.tgt.def.r * S) { hit(s.tgt, s.from, s.dmg); s.hitIds[s.tgt.id] = 1; s.pierce--; if (s.pierce <= 0) { shots.splice(i, 1); continue; } s.tgt = null; }
           else { s.x += dx / d * stepL; s.y += dy / d * stepL; }
         }
-        for (let i = fx.length - 1; i >= 0; i--) { const f = fx[i]; f.t += dt; if (f.kind === "p") { f.x += f.vx * dt; f.y += f.vy * dt; f.vx *= 0.98; f.vy *= 0.98; } if (f.t > f.dur) fx.splice(i, 1); }
+        for (let i = fx.length - 1; i >= 0; i--) { const f = fx[i]; f.t += dt; if (f.kind === "p") { f.x += f.vx * dt; f.y += f.vy * dt; f.vx *= 0.98; f.vy *= 0.98; } else if (f.kind === "pg") { f.x += f.vx * dt; f.vy += f.g * dt; f.y += f.vy * dt; if (f.y > f.y0 && f.vy > 0) { f.y = f.y0; f.vy *= -0.45; f.vx *= 0.7; } } if (f.t > f.dur) fx.splice(i, 1); }
         for (let i = floaters.length - 1; i >= 0; i--) { floaters[i].t += dt; if (floaters[i].t > (floaters[i].big ? 1600 : 800)) floaters.splice(i, 1); }
       }
       function update(dtRaw) {
         if (screen !== "game" || paused) { now += dtRaw; if (screen === "menu" || screen === "tree") { /* idle anim only */ } return; }
         const dt = Math.min(50, dtRaw);
-        for (let i = 0; i < speed; i++) { step(dt); if (screen !== "game") break; }
+        if (speed < 1) step(dt * speed); else for (let i = 0; i < speed; i++) { step(dt); if (screen !== "game") break; }
       }
 
       // ================= RENDER =================
@@ -745,8 +771,14 @@
       function drawShots() {
         shots.forEach((s) => { g.strokeStyle = rgba(s.col, 0.55); g.lineWidth = S * 0.004; g.lineCap = "round"; if (s.trail.length) { g.beginPath(); g.moveTo(s.trail[0].x, s.trail[0].y); s.trail.forEach((p) => g.lineTo(p.x, p.y)); g.lineTo(s.x, s.y); g.stroke(); } g.fillStyle = "#fff"; if (!lowFx()) { g.shadowColor = s.col; g.shadowBlur = S * 0.012; } dot(g, s.x, s.y, S * 0.005); g.shadowBlur = 0; });
         fx.forEach((f) => {
-          const k = f.t / f.dur; g.save(); g.globalAlpha = 1 - k;
-          if (f.kind === "p") { g.fillStyle = f.col; dot(g, f.x, f.y, f.r * (1 - k * 0.5)); }
+          if (f.t < 0) return; const k = f.t / f.dur; g.save(); g.globalAlpha = 1 - k;
+          if (f.kind === "p" || f.kind === "pg") { g.fillStyle = f.col; dot(g, f.x, f.y, f.r * (1 - k * 0.5)); }
+          else if (f.kind === "pillar") { const w = S * 0.05 * (1 - k) + 2, h = S * 0.38; const gr = g.createLinearGradient(0, f.y - h, 0, f.y); gr.addColorStop(0, rgba(f.col, 0)); gr.addColorStop(0.6, rgba(f.col, 0.55)); gr.addColorStop(1, "rgba(255,255,255,0.9)"); g.fillStyle = gr; g.fillRect(f.x - w / 2, f.y - h, w, h); g.fillStyle = "#fff"; g.fillRect(f.x - w * 0.15, f.y - h, w * 0.3, h); }
+          else if (f.kind === "crack") { g.strokeStyle = f.col; g.lineWidth = S * 0.005 * (1 - k) + 1; const L = S * 0.09 * Math.min(1, k * 3); for (let i = 0; i < f.n; i++) { const a = i * TAU / f.n + hash(i, 4) * 0.5, l = L * (0.6 + hash(i, 5) * 0.6); g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(f.x + Math.cos(a) * l * 0.5 + Math.cos(a + 0.6) * l * 0.12, f.y + Math.sin(a) * l * 0.5 + Math.sin(a + 0.6) * l * 0.12); g.lineTo(f.x + Math.cos(a) * l, f.y + Math.sin(a) * l); g.stroke(); } }
+          else if (f.kind === "swoop") { g.strokeStyle = f.col; g.lineWidth = S * 0.012 * (1 - k) + 1; g.lineCap = "round"; if (!lowFx()) { g.shadowColor = f.col; g.shadowBlur = S * 0.02; } const a = Math.min(1, k * 1.6); g.beginPath(); for (let i = 0; i <= 12; i++) { const u = (i / 12) * a, px = f.x - S * 0.5 * (1 - u), py = f.y - S * 0.45 * Math.pow(1 - u, 1.7) - Math.sin(u * Math.PI) * S * 0.05; if (i) g.lineTo(px, py); else g.moveTo(px, py); } g.stroke(); }
+          else if (f.kind === "zigzag") { g.strokeStyle = f.col; g.lineWidth = S * 0.005; g.beginPath(); for (let i = 0; i <= 8; i++) { const a = i * 0.9 + k * 4, r = S * 0.02 + i * S * 0.008 * k; const px = f.x + Math.cos(a) * r, py = f.y + Math.sin(a) * r * 0.6; if (i) g.lineTo(px, py); else g.moveTo(px, py); } g.stroke(); }
+          else if (f.kind === "spiral") { g.strokeStyle = f.col; g.lineWidth = S * 0.01 * (1 - k) + 1; g.lineCap = "round"; g.beginPath(); for (let i = 0; i <= 40; i++) { const u = i / 40, a = u * TAU * 2.5 - k * 3, r = S * 0.11 * u * (0.3 + 0.7 * k); const px = f.x + Math.cos(a) * r, py = f.y + Math.sin(a) * r * 0.75; if (i) g.lineTo(px, py); else g.moveTo(px, py); } g.stroke(); }
+          else if (f.kind === "splash") { g.strokeStyle = f.col; g.lineWidth = S * 0.006 * (1 - k) + 1; g.beginPath(); ell(g, f.x, f.y + S * 0.005, S * (0.03 + 0.09 * k), S * (0.012 + 0.035 * k), 0); g.stroke(); }
           else if (f.kind === "ring") { g.strokeStyle = f.col; g.lineWidth = S * 0.006 * (1 - k) + 1; g.beginPath(); g.arc(f.x, f.y, f.r * (0.3 + 0.7 * k), 0, TAU); g.stroke(); }
           else if (f.kind === "beam") { g.strokeStyle = f.col; g.lineWidth = S * 0.012 * (1 - k) + 1; if (!lowFx()) { g.shadowColor = f.col; g.shadowBlur = S * 0.02; } g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(f.x2, f.y2); g.stroke(); g.strokeStyle = "#fff"; g.lineWidth = 1.5; g.stroke(); }
           else if (f.kind === "cone") { g.fillStyle = rgba(f.col, 0.35); g.beginPath(); g.moveTo(f.x, f.y); g.arc(f.x, f.y, f.r * (0.6 + 0.4 * k), f.ang - f.cone, f.ang + f.cone); g.closePath(); g.fill(); }
@@ -788,6 +820,7 @@
       function renderUI() { const b = screen === "menu" || screen === "tree"; if (wrap && b !== banner) { banner = b; wrap.classList.toggle("banner", b); resize(); } renderHud(); renderPanel(); }
       // The top bar is built ONCE and then patched in place. (It used to be wiped + rebuilt every 400 ms and on every
       // kill, which destroyed the button between your press and the click — that's why Pause/auto/speed felt laggy.)
+      const SPEEDS = [0.5, 1, 2, 3];
       function renderHud() {
         if (!topbar) return;
         if (screen !== "game") { topbar.style.display = "none"; return; } topbar.style.display = "";
@@ -796,7 +829,7 @@
           const L = el("div", "cb-stat"), C = el("div", "cb-stat"), Wv = el("div", "cb-stat"), E = el("div", "cb-stat cb-hudeggs"); E.title = "Eggs — bosses drop them mid-run; spend in the skill tree (☰)"; topbar.appendChild(L); topbar.appendChild(C); topbar.appendChild(Wv); topbar.appendChild(E);
           const ctr = el("div", "cb-ctr");
           const start = el("button", "btn cb-start"); start.onclick = () => { if (waveActive) { if (diff.id === "hard" && !paused) { toast("Hard mode: no pausing while bugs are on the road", "#ff8fa3"); sndNo(); return; } paused = !paused; sndClick(); } else { paused = false; startWave(); } renderHud(); }; ctr.appendChild(start);
-          const spd = el("div", "cb-speed"); const sps = [1, 2, 3].map((v) => { const b = el("button", "cb-sp", v + "×"); b.onclick = () => { if (b.disabled) { toast("Unlock 3× in the skill tree", "#c98cff"); return; } speed = v; sndClick(); renderHud(); }; spd.appendChild(b); return b; }); ctr.appendChild(spd);
+          const spd = el("div", "cb-speed"); const sps = SPEEDS.map((v) => { const b = el("button", "cb-sp", v === 0.5 ? "½×" : v + "×"); b.onclick = () => { if (b.disabled) { toast(v === 0.5 ? "Unlock Slow Motion (½×) in the skill tree" : "Unlock 3× in the skill tree", "#c98cff"); return; } speed = v; sndClick(); renderHud(); }; spd.appendChild(b); return b; }); ctr.appendChild(spd);
           const auto = el("button", "cb-auto", "auto"); auto.title = "Start the next wave automatically"; auto.onclick = () => { autoNext = !autoNext; sndClick(); toast(autoNext ? "Auto-start ON — next wave begins by itself" : "Auto-start off", autoNext ? "#7fe0a0" : "#e6ecf5"); renderHud(); }; ctr.appendChild(auto);
           const menu = el("button", "cb-menu", "☰"); menu.title = "Maps / skill tree (run is saved between waves)"; menu.onclick = () => { if (diff.id === "hard" && waveActive) { toast("Hard mode: finish the wave first", "#ff8fa3"); sndNo(); return; } paused = true; saveRun(); showMenu(); }; ctr.appendChild(menu);
           topbar.appendChild(ctr);
@@ -806,7 +839,7 @@
         set(H.L, "L", "<b>♥ " + lives + "</b><small>lives</small>"); set(H.C, "C", "<b>$" + Math.floor(cash) + "</b><small>cash</small>"); set(H.Wv, "W", "<b>" + Math.min(wave, 999) + (freeplay || wave > 40 ? "" : " / 40") + "</b><small>wave</small>"); set(H.E, "E", "<b>🥚 " + save.eggs + "</b><small>eggs</small>");
         const hardLock = diff.id === "hard" && waveActive && !paused;
         cls(H.start, "sc", "btn cb-start" + (waveActive ? " on" : "") + (hardLock ? " nolock" : "")); set(H.start, "st", waveActive ? (paused ? "▶ Resume" : hardLock ? "🔥 No pause (Hard)" : "⏸ Pause") : "▶ Start wave " + wave);
-        H.sps.forEach((b, i) => { const v = i + 1, dis = v === 3 && !meta.speed3; cls(b, "sp" + v, "cb-sp" + (speed === v ? " on" : "") + (dis ? " dis" : "")); if (b.disabled !== dis) { b.disabled = dis; b.title = dis ? "Unlock 3× in the skill tree" : ""; } });
+        H.sps.forEach((b, i) => { const v = SPEEDS[i], dis = (v === 3 && !meta.speed3) || (v === 0.5 && !meta.speedHalf); cls(b, "sp" + v, "cb-sp" + (speed === v ? " on" : "") + (dis ? " dis" : "")); if (b.disabled !== dis) { b.disabled = dis; b.title = dis ? (v === 0.5 ? "Unlock Slow Motion in the skill tree" : "Unlock 3× in the skill tree") : ""; } });
         cls(H.auto, "au", "cb-auto" + (autoNext ? " on" : ""));
       }
       function renderPanel() {
@@ -829,7 +862,7 @@
           const foot = el("div", "cb-sel-foot");
           if (kind === "farm" && t.bank > 0) { const col = el("button", "cb-collect", "🥚 collect $" + t.bank); col.onclick = () => collectBank(t); panel.appendChild(col); }
           if (T.fly) { const pb = el("button", "cb-target cb-patrol" + (t.patrol != null ? " on" : ""), t.patrol == null ? "✈ patrol a lane" : "✈ patrolling lane " + (t.patrol + 1) + (t.patrol + 1 < paths.length ? " · next lane" : " · stop")); pb.title = "Fly back and forth above a road, attacking everything on it"; pb.onclick = () => { if (t.patrol == null) { t.hx = t.x; t.hy = t.y; t.patrol = 0; t.pd = 0; t.pdir = 1; toast(T.name + " is patrolling lane 1", T.col); } else if (t.patrol + 1 < paths.length) { t.patrol++; t.pd = 0; toast(T.name + " switched to lane " + (t.patrol + 1), T.col); } else { t.patrol = null; t.x = t.hx; t.y = t.hy; t.spawnT = 0.6; } sndClick(); renderPanel(); }; panel.appendChild(pb); }
-          const mv = el("button", "cb-target cb-move" + (moving === t ? " on" : ""), moving === t ? "✕ cancel move" : "⇄ move"); mv.title = "Pick this reptile up and put it somewhere else — free"; mv.onclick = () => { if (moving === t) { moving = null; renderPanel(); return; } if (waveActive && !paused) { toast(diff.id === "hard" ? "Hard mode: move reptiles between waves" : "Pause first, then move", "#ff8fa3"); sndNo(); return; } if (t.patrol != null) { toast("Stop the patrol first", "#ff8fa3"); sndNo(); return; } moving = t; placing = null; sndPick(); toast("Tap where " + T.name + " should go · right-click cancels", T.col); renderPanel(); };
+          const mv = el("button", "cb-target cb-move" + (moving === t ? " on" : ""), moving === t ? "✕ cancel move" : "⇄ move"); mv.title = "Pick this reptile up and put it somewhere else — free"; mv.onclick = () => { if (moving === t) { moving = null; renderPanel(); return; } if (waveActive && !paused && !meta.freeMove) { toast((diff.id === "hard" ? "Hard mode: move between waves" : "Pause first, then move") + " — or unlock Quick Feet in the skill tree", "#ff8fa3"); sndNo(); return; } if (t.patrol != null) { toast("Stop the patrol first", "#ff8fa3"); sndNo(); return; } moving = t; placing = null; sndPick(); toast("Tap where " + T.name + " should go · right-click cancels", T.col); renderPanel(); };
           if (kind !== "aura" && kind !== "farm") { const tg = el("button", "cb-target", "target: " + t.mode); tg.onclick = () => { const modes = ["first", "last", "strong", "close"]; t.mode = modes[(modes.indexOf(t.mode) + 1) % modes.length]; renderPanel(); }; foot.appendChild(tg); }
           foot.appendChild(mv); const sell = el("button", "cb-sell", "sell $" + Math.round(t.spent * meta.sell)); sell.onclick = () => sellTower(t); foot.appendChild(sell); panel.appendChild(foot);
           return;
@@ -1055,7 +1088,7 @@
       function onDown(x, y, button) {
         if (screen !== "game") return;
         if (button === 2) { placing = null; moving = null; selected = null; renderPanel(); return; }
-        if (moving) { const t = moving, T = TOWERS[t.type]; const why = blocked(x, y, towerR(t), t.type, t); if (why) { toast(blockMsg(why, T), "#ff8fa3"); sndNo(); return; } burst(t.x, t.y, "#c8b89a", 8); ring(t.x, t.y, S * 0.05, T.col, 250); t.x = x; t.y = y; t.hx = x; t.hy = y; t.spawnT = 1; statsDirty = true; burst(x, y, T.col, 16); ring(x, y, S * 0.08, T.col, 400); floaters.push({ x, y: y - S * 0.07, text: T.name.toUpperCase() + " MOVED", col: T.col, t: 0, big: true }); sndPlace(); moving = null; selected = t; renderPanel(); return; }
+        if (moving) { const t = moving, T = TOWERS[t.type]; const why = blocked(x, y, towerR(t), t.type, t); if (why) { toast(blockMsg(why, T), "#ff8fa3"); sndNo(); return; } burst(t.x, t.y, "#c8b89a", 8); ring(t.x, t.y, S * 0.05, T.col, 250); t.x = x; t.y = y; t.hx = x; t.hy = y; t.spawnT = 1; statsDirty = true; if (waveActive && !paused) t.stunT = Math.max(t.stunT || 0, 650); dropFx(t, x, y, true); floaters.push({ x, y: y - S * 0.07, text: T.name.toUpperCase() + " MOVED", col: T.col, t: 0, big: true }); moving = null; selected = t; renderPanel(); return; }
         if (placing) { if (place(placing, x, y) && cash < TOWERS[placing].cost) { placing = null; toast("Out of cash — sell or clear a wave", "#ffd36b"); } renderPanel(); return; }
         let best = null, bd = 1e9; towers.forEach((t) => { const d = dist(x, y, t.x, t.y); if (d < towerR(t) * 1.6 && d < bd) { bd = d; best = t; } });
         if (best && best.bank > 0) collectBank(best);
@@ -1132,7 +1165,7 @@
 .cb-up{width:100%;display:grid;grid-template-columns:1fr auto;gap:2px 8px;text-align:left;background:rgba(127,224,160,.12);border:1px solid rgba(127,224,160,.4);border-radius:10px;padding:6px 8px;color:#e6ecf5;font:inherit;cursor:pointer}.cb-up b{font-size:13px}.cb-up small{grid-column:1;opacity:.7;font-size:11px}.cb-up em{grid-row:1/3;align-self:center;font-style:normal;font-weight:800;color:#ffd36b}.cb-up.poor{opacity:.5;border-color:rgba(255,255,255,.15);background:rgba(255,255,255,.04)}
 .cb-maxed{font-size:12px;color:#7fe0a0;font-weight:700}.cb-maxed.dim{color:rgba(230,236,245,.45);font-weight:500}
 .cb-sel-foot{display:flex;gap:8px;margin-top:6px}.cb-target,.cb-sell{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:8px;color:#e6ecf5;font:inherit;font-size:13px;font-weight:700;cursor:pointer}.cb-sell{border-color:rgba(255,107,107,.5);color:#ff8fa3}
-.cb-overlay{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;z-index:5;overflow-y:auto;padding:6px}.cb-overlay.menu{padding-top:var(--cbtop,190px)}.cb-overlay.menu.tree{padding-top:6px}.cb.banner .cb-overlay{position:static;inset:auto;padding:0;overflow:visible;width:100%}.cb.banner .cb-overlay.menu{padding-top:0}.cb.banner .cb-left{margin-top:14px}.cb.banner .cb-card-big{width:var(--cbw,100%);max-width:100%;box-sizing:border-box}.cb.banner .cb-canvas{border-radius:18px 18px 8px 8px;cursor:default}
+.cb-overlay{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;z-index:5;overflow-y:auto;padding:6px}.cb-overlay.menu{padding-top:var(--cbtop,190px)}.cb-overlay.menu.tree{padding-top:6px}.cb.banner .cb-overlay{position:static;inset:auto;padding:0;overflow:visible;width:100%}.cb.banner .cb-overlay.menu{padding-top:0}.cb.banner{align-self:flex-start}.cb.banner .cb-left{margin-top:14px}.cb.banner .cb-card-big{width:var(--cbw,100%);max-width:100%;box-sizing:border-box}.cb.banner .cb-canvas{border-radius:18px 18px 8px 8px;cursor:default}
 .cb-card-big{width:min(880px,100%);background:rgba(14,11,26,.94);border:1px solid rgba(127,224,160,.35);border-radius:22px;padding:18px 20px;box-shadow:0 0 60px rgba(127,224,160,.12);backdrop-filter:blur(6px)}
 .cb-menu-top{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}.cb-menu-top h2{margin:0;font-size:22px;flex:1}.cb-eggs{font-weight:800;color:#ffd36b;font-size:18px}
 .cb-continue{width:100%;margin-bottom:10px;background:#ffd36b!important;color:#0e0c1e!important}.cb-treecont{background:#ffd36b!important;color:#0e0c1e!important}
