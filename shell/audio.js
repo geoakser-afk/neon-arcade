@@ -48,6 +48,7 @@
   // ----- semantic helpers games use via ctx.audio -----
   const A = {
     unlock, tone, chord, arp,
+    context: ctx,   // the shared AudioContext, for games that decode real clips into AudioBuffers (Farm)
     beep: (f, d, type, vol) => tone(f, d, { type, vol }), // back-compat with break.html style
 
     // calm tier — soft, easy on the ears

@@ -1,8 +1,88 @@
 /* Farm — made for Christopher (age 5). Six big animal faces on a night meadow:
    cow, sheep, duck, dog, cat, pig. Tap one: it squishes, little hearts and notes
-   float up, and it talks — every voice is synthesized through ctx.audio.
+   float up, and it talks — a real recording (audio/animals/<kind>.mp3), decoded once
+   into an AudioBuffer so a tap plays with zero fetch; synthesized voice() is the fallback.
    Nothing to lose, no clock. Every 10 taps: a happy arpeggio + confetti. */
 (function () {
+  // ---- real animal recordings, decoded ONCE (module-level so re-entering Farm is instant) ----
+  // The old path built `new Audio(...)` on the first tap and then cloneNode()'d it on EVERY tap;
+  // a cloned media element has no buffered data, so each tap re-ran fetch → MP3 decode → the
+  // media pipeline before a sound came out (readyState was 0 at every play()). That was the delay.
+  const CLIP_BASE = "audio/animals/";
+  let ac = null;                 // AudioContext — the shell's shared one when it's exposed
+  const buffers = {};            // kind -> decoded AudioBuffer
+  const leads = {};              // kind -> seconds of near-silence at the head to skip
+  const decodeFailed = {};       // kind -> true when fetch/decode failed (use element fallback)
+  const clipEls = {};            // kind -> preloaded HTMLAudioElement fallback (reused, never cloned)
+  const elFailed = {};           // kind -> true when even the element 404'd (use synthesized voice)
+  let preloadStarted = false;
+
+  function audioCtx() {
+    if (ac) return ac;
+    const A = window.Arcade && window.Arcade.audio;
+    try { if (A && typeof A.context === "function") ac = A.context(); } catch (e) { ac = null; }
+    if (!ac) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) { try { ac = new AC(); } catch (e) { ac = null; } } }
+    return ac;
+  }
+  // autoplay policy: must be called from inside a user gesture (pointerdown) on mobile Safari/Chrome
+  function unlockCtx() { const c = audioCtx(); if (c && c.state !== "running") { try { c.resume(); } catch (e) {} } }
+
+  // first sample above -34 dBFS within the first second, minus 5 ms so the transient is intact
+  function leadIn(buf) {
+    const d = buf.getChannelData(0), n = Math.min(d.length, buf.sampleRate);
+    for (let i = 0; i < n; i++) if (Math.abs(d[i]) > 0.02) return Math.max(0, i / buf.sampleRate - 0.005);
+    return 0;
+  }
+  function decode(c, ab) {
+    return new Promise(function (res, rej) {
+      try { const p = c.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej); } catch (e) { rej(e); }
+    });
+  }
+  function clipEl(kind) {
+    let el = clipEls[kind];
+    if (!el) {
+      el = clipEls[kind] = new Audio(CLIP_BASE + kind + ".mp3");
+      el.preload = "auto";
+      el.addEventListener("error", function () { elFailed[kind] = true; }, false);
+      try { el.load(); } catch (e) {}
+    }
+    return el;
+  }
+  function preloadClips() {
+    if (preloadStarted) return;
+    preloadStarted = true;
+    const c = audioCtx();
+    const canFetch = !!window.fetch && location.protocol !== "file:";   // file:// blocks fetch (CORS) → element path
+    ORDER.forEach(function (kind) {
+      clipEl(kind);                                  // element fallback warms in parallel
+      if (!c || !canFetch) { decodeFailed[kind] = true; return; }
+      fetch(CLIP_BASE + kind + ".mp3")
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.arrayBuffer(); })
+        .then(function (ab) { return decode(c, ab); })
+        .then(function (buf) { buffers[kind] = buf; leads[kind] = leadIn(buf); })
+        .catch(function () { decodeFailed[kind] = true; });
+    });
+  }
+  // true when the recording (buffer or element) is playing; false = caller should synthesize
+  function playClip(kind, onFail) {
+    const buf = buffers[kind], c = ac;
+    if (buf && c) {
+      if (c.state !== "running") { try { c.resume(); } catch (e) {} }
+      const src = c.createBufferSource(), g = c.createGain();
+      src.buffer = buf; g.gain.value = 0.9;
+      src.connect(g); g.connect(c.destination);
+      src.onended = function () { try { src.disconnect(); g.disconnect(); } catch (e) {} };
+      src.start(0, leads[kind] || 0);
+      return true;
+    }
+    if (elFailed[kind]) return false;
+    const el = clipEl(kind);
+    try { el.currentTime = 0; } catch (e) {}
+    const p = el.play();
+    if (p && p.catch) p.catch(function () { onFail(); });
+    return true;
+  }
+
   const ANIMALS = {
     cow:   { body: "#f7f4ff", shade: "#d8d2ea", glow: "#f7f4ff", eye: "#3a2a44", spot: "#3a2a44", nose: "#ffb3d1", horn: "#e8d5a3" },
     sheep: { body: "#d9c6e6", shade: "#b39ccb", glow: "#fff6e8", eye: "#3a2a44", fluff: "#fff6e8" },
@@ -143,17 +223,12 @@
         });
       }
 
-      // REAL animal recordings (audio/animals/<kind>.mp3, from Wikimedia Commons — see CREDITS.md).
+      // REAL animal recordings (audio/animals/<kind>.mp3, from Wikimedia Commons — see CREDITS.md),
+      // pre-decoded by preloadClips() at mount and played straight from the AudioBuffer (see top of file).
       // The synthesized voice() below is only the fallback if a clip can't load.
-      const clips = {};
       function realSound(kind) {
         if (ctx.audio.muted) return false;
-        let el = clips[kind];
-        if (!el) { el = clips[kind] = new Audio("audio/animals/" + kind + ".mp3"); el.preload = "auto"; }
-        const node = el.cloneNode(); node.volume = 0.9;
-        node.onerror = function () { voice(kind); };
-        const p = node.play();
-        if (p && p.catch) p.catch(function () { voice(kind); });
+        if (!playClip(kind, function () { voice(kind); })) voice(kind);
         return true;
       }
       // each animal's synthesized voice — layered sawtooth/triangle "formants" with
@@ -287,6 +362,7 @@
           wrap.appendChild(hint);
           stage.appendChild(wrap);
           now = 0; taps = 0; floaties = []; confetti = []; animals = [];
+          preloadClips();          // fetch + decode all six recordings now, not on the first tap
           resize();
           ctx.setScore(0);
           Arcade.input.setPointerTarget(canvas);
@@ -295,6 +371,7 @@
         },
         handleInput(intent) {
           if (intent.type !== "point" || intent.phase !== "down" || intent.button !== 0) return;
+          unlockCtx();             // inside the touch gesture, so mobile Safari/Chrome let the buffers play
           let best = null, bd = Infinity;
           animals.forEach(function (a) {
             const d = Math.hypot(intent.x - a.x, intent.y - a.y);
