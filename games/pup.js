@@ -4,7 +4,10 @@
    gets harder: lots of locks, lots of keys. Then he's a jigsaw puzzle — put him
    back together and something happens. Then a GHOST puts him in an INVISIBLE cage:
    tap around to find it (warmer/colder shimmer), tap the ghost to make him drop the
-   keys. Loops forever, harder each lap. No losing, no timer, no reading. */
+   keys. Then he sneaks back, grabs the pup and flies for the moon: CHASE him in the fire
+   truck — every tap is a burst of speed; the ghost stays just ahead, then gets tired and
+   stalls near the moon so Chris ALWAYS catches him (faster taps = sooner). Loops forever,
+   harder each lap. No losing, no timer, no reading. */
 (function () {
   const TAU = Math.PI * 2;
   const KEY_COLS = ["#ffd36b", "#ff8fd0", "#74b9ff", "#7fe0a0", "#c9c3ff", "#ffb86b"];
@@ -106,7 +109,7 @@
       let phase = "intro", pt = 0, roundIdx = 0, spec = null;
       let objects = [], keys = [], particles = [], rings = [];
       let pup = { x: 0.5, y: 0.26, vis: 1, mood: "happy", hop: 0 };
-      let cage = null, ghost = null, puzzle = null, drag = null;
+      let cage = null, ghost = null, puzzle = null, drag = null, chase = null, sirenAt = -9999;
       let voiceAt = 0, hintAt = 0;
       const CAGE = { x: 0.5, y: 0.25, w: 0.34, h: 0.26 };
 
@@ -116,10 +119,12 @@
         if (i === 1) return { type: "hide", locks: 3, objects: 8 };
         if (i === 2) return { type: "puzzle", cols: 2, rows: 2 };
         if (i === 3) return { type: "ghost", locks: 3, speed: 1 };
-        const k = i - 4, lvl = Math.floor(k / 3) + 1;
-        if (k % 3 === 0) return { type: "hide", locks: Math.min(6, 4 + lvl), objects: 9 };
-        if (k % 3 === 1) return { type: "puzzle", cols: 3, rows: lvl >= 2 ? 3 : 2 };
-        return { type: "ghost", locks: Math.min(6, 3 + lvl), speed: 1 + 0.25 * lvl };
+        if (i === 4) return { type: "chase", speed: 1 };
+        const k = i - 5, lvl = Math.floor(k / 4) + 1;
+        if (k % 4 === 0) return { type: "hide", locks: Math.min(6, 4 + lvl), objects: 9 };
+        if (k % 4 === 1) return { type: "puzzle", cols: 3, rows: lvl >= 2 ? 3 : 2 };
+        if (k % 4 === 2) return { type: "ghost", locks: Math.min(6, 3 + lvl), speed: 1 + 0.25 * lvl };
+        return { type: "chase", speed: 1 + 0.3 * lvl };
       }
 
       let barkEl = null, barkAt = -9999;
@@ -392,9 +397,10 @@
       // ---------- round flow ----------
       function startRound() {
         spec = roundSpec(roundIdx);
-        objects = []; keys = []; cage = null; ghost = null; puzzle = null; drag = null;
+        objects = []; keys = []; cage = null; ghost = null; puzzle = null; drag = null; chase = null;
         pup = { x: CAGE.x, y: CAGE.y, vis: 1, mood: "happy", hop: 0 };
-        if (spec.type === "ghost") { cage = makeCage(spec.locks, 0.2 + Math.random() * 0.6, 0.45 + Math.random() * 0.3, 0.75); cage.vis = 0; ghost = makeGhost(spec.locks, spec.speed); setPhase("ghostIn"); }
+        if (spec.type === "chase") { ghost = makeGhost(0, spec.speed); ghost.x = -0.15; ghost.y = 0.2; ghost.alpha = 1; chase = { gx: 0.14, tx: 0.06, vel: 0, boost: 0, hasPup: false, caught: false, t: 0, taps: 0, hinted: false, lastTap: 0, tired: 0 }; setPhase("chaseIn"); }
+        else if (spec.type === "ghost") { cage = makeCage(spec.locks, 0.2 + Math.random() * 0.6, 0.45 + Math.random() * 0.3, 0.75); cage.vis = 0; ghost = makeGhost(spec.locks, spec.speed); setPhase("ghostIn"); }
         else setPhase("intro");
       }
       function update(dt) {
@@ -439,6 +445,37 @@
           if (pt > 700 && pt < 700 + dt) say(["Boo!", "Hee hee hee!"], "callum");
           if (pt > 1800 && pup.vis > 0) { pup.vis = 0; for (let i = 0; i < 20; i++) particles.push({ x: pup.x, y: pup.y, vx: (Math.random() - 0.5) * 0.0003, vy: (Math.random() - 0.5) * 0.0003, life: 1.2, r: 0.006, col: "#c9c3ff", shape: "dot" }); ctx.audio.tone(260, 0.5, { type: "sine", vol: 0.07, glide: 130 }); say("Uh oh! A ghost!"); }
           if (pt > 3000) { ghost.tx = Math.random(); ghost.ty = 0.3; setPhase("ghost"); pup.vis = 1; pup.mood = "sad"; say("The cage is invisible! Tap to find it!"); }
+        } else if (phase === "chaseIn") {
+          // the ghost sneaks back, grabs the pup, flies off toward the moon
+          pup.hop = Math.abs(Math.sin(pt * 0.006)) * 0.02;
+          ghost.tx = pup.x; ghost.ty = pup.y - 0.02; updateGhost(dt); ghost.alpha = 1;
+          const near = Math.hypot(ghost.x - pup.x, ghost.y - pup.y) < 0.04;
+          if (!chase.hasPup && (near || pt > 2200)) { chase.hasPup = true; pup.vis = 0; say(["Boo!", "Hee hee hee!"], "callum"); ctx.audio.tone(260, 0.5, { type: "sine", vol: 0.07, glide: 130 }); puff(pup.x, pup.y, 16, "#c9c3ff", 0.0002); setTimeout(function () { if (ctx) say("Oh no! He's taking the puppy!"); }, 1300); }
+          if (chase.hasPup && pt > 3600) { setPhase("chase"); chase.lastTap = now; say("Catch the ghost!"); }
+        } else if (phase === "chase") {
+          const c = chase; c.t += dt;
+          // truck: taps add speed, speed bleeds off
+          c.vel = Math.max(0, c.vel - c.vel * dt / 380);
+          c.tx = Math.min(0.9, c.tx + c.vel * dt);
+          c.boost = Math.max(0, c.boost - dt / 250);
+          // ghost: stays just ahead, then gets TIRED near the moon and stalls until caught — Chris always wins
+          const gap = c.gx - c.tx, base = 0.00024 * spec.speed;
+          let gs = gap > 0.3 ? 0.25 : gap > 0.15 ? 0.75 : 1.2;
+          if (c.gx > 0.72) { c.tired = Math.min(1, c.tired + dt / 1500); gs *= Math.max(0, (0.9 - c.gx) / 0.18) * (1 - c.tired); }
+          c.gx = Math.min(0.9, c.gx + base * gs * dt);
+          ghost.x = c.gx; ghost.y = 0.3 + (c.tired > 0.5 ? Math.sin(now * 0.02) * 0.006 : 0); ghost.alpha = 1;
+          if (!c.hinted && now - c.lastTap > 3500) { c.hinted = true; say("Tap fast!"); }
+          if (c.tx >= c.gx - 0.06) {
+            c.caught = true; pup.vis = 1; pup.mood = "party"; pup.x = c.tx; pup.y = 0.56;
+            ghost.gone = true; ghost.tx = c.gx; setPhase("chaseDone"); addStar();
+            ctx.audio.arp([523, 659, 784, 1046, 1318], { dur: 0.2, step: 0.08, vol: 0.14 });
+            say(["Gotcha!", "You saved him!"]); setTimeout(function () { if (ctx) bark(); }, 1800);
+            puff(c.tx, 0.6, 60, null, 0.0005);
+          }
+        } else if (phase === "chaseDone") {
+          updateGhost(dt);
+          chase.tx = Math.min(1.2, chase.tx + 0.00012 * dt); pup.x = chase.tx; pup.hop = Math.abs(Math.sin(pt * 0.008)) * 0.02;
+          if (pt > 3400) { roundIdx++; startRound(); }
         } else if (phase === "freed") {
           pup.hop = Math.abs(Math.sin(pt * 0.008)) * 0.05;
           if (pt > 3200) { roundIdx++; startRound(); }
@@ -507,6 +544,11 @@
           puzzle.pieces.forEach(function (p) { if (p.placed) return; if (x > p.x - 0.02 && x < p.x + p.w + 0.02 && y > p.y - 0.02 && y < p.y + p.h + 0.02) best = p; });
           if (best) { puzzle.pieces.splice(puzzle.pieces.indexOf(best), 1); puzzle.pieces.push(best); drag = { piece: best, ox: x - best.x, oy: y - best.y }; ctx.audio.pick(); return; }
           ctx.audio.tone(330, 0.08, { type: "sine", vol: 0.04, glide: 420 });
+        } else if (phase === "chase") {
+          const c = chase; c.taps++; c.lastTap = now;
+          c.vel = Math.min(0.00042, c.vel + 0.00012); c.boost = 1;
+          if (now - sirenAt > 90) { sirenAt = now; ctx.audio.tone(520 + Math.min(300, c.taps * 6), 0.1, { type: "triangle", vol: 0.06, glide: 880 }); }
+          particles.push({ x: c.tx - 0.06, y: 0.66, vx: -0.0003, vy: -0.00012, life: 0.8, r: 0.01, col: "rgba(220,215,255,0.5)", shape: "dot" });
         } else if (phase === "freed" || phase === "intro") {
           // tapping the pup = happy bark
           if (pup.vis > 0 && Math.hypot(x - pup.x, y - pup.y) < 0.15 && now - barkAt > 1500) { bark(); puff(pup.x, pup.y, 8, "#ffd36b", 0.0002); }
@@ -538,6 +580,56 @@
         drag = null;
       }
 
+      // ---------- chase scene ----------
+      function drawTruck(x, y, r, boost) {
+        g.save(); g.translate(x, y);
+        g.shadowColor = "#ff9fa8"; g.shadowBlur = r * 0.4;
+        g.fillStyle = "#e84f5a"; g.beginPath(); g.roundRect(-r * 1.5, -r * 0.7, r * 3, r * 0.9, r * 0.15); g.fill();
+        g.fillStyle = "#c93c47"; g.beginPath(); g.roundRect(r * 0.6, -r * 1.35, r * 0.9, r * 0.7, r * 0.15); g.fill();
+        g.fillStyle = "#bfe9ff"; g.beginPath(); g.roundRect(r * 0.72, -r * 1.25, r * 0.55, r * 0.45, r * 0.08); g.fill();
+        g.shadowBlur = 0;
+        g.strokeStyle = "#ffd36b"; g.lineWidth = r * 0.1; g.lineCap = "round";
+        g.beginPath(); g.moveTo(-r * 1.4, -r * 0.95); g.lineTo(r * 0.4, -r * 0.95); g.moveTo(-r * 1.4, -r * 0.75); g.lineTo(r * 0.4, -r * 0.75); g.stroke();
+        for (let i = 0; i < 5; i++) { g.beginPath(); g.moveTo(-r * 1.3 + i * r * 0.4, -r * 0.95); g.lineTo(-r * 1.3 + i * r * 0.4, -r * 0.75); g.stroke(); }
+        const red = Math.sin(now * 0.012) > 0;
+        g.fillStyle = red ? "#ff4d5e" : "#4d8dff"; g.shadowColor = g.fillStyle; g.shadowBlur = r * 0.6; g.beginPath(); g.roundRect(r * 0.85, -r * 1.55, r * 0.4, r * 0.22, r * 0.08); g.fill(); g.shadowBlur = 0;
+        g.fillStyle = "#2a2434"; [-r * 0.9, r * 0.9].forEach(function (wx) { g.beginPath(); g.arc(wx, r * 0.3, r * 0.36, 0, TAU); g.fill(); });
+        g.fillStyle = "#8a86a8"; [-r * 0.9, r * 0.9].forEach(function (wx) { g.save(); g.translate(wx, r * 0.3); g.rotate(now * 0.01 * (1 + boost * 3)); g.beginPath(); g.arc(0, 0, r * 0.16, 0, TAU); g.fill(); g.fillRect(-r * 0.03, -r * 0.3, r * 0.06, r * 0.6); g.restore(); });
+        if (boost > 0) { g.fillStyle = "rgba(255,184,107," + (0.5 * boost) + ")"; g.beginPath(); g.moveTo(-r * 1.55, -r * 0.4); g.lineTo(-r * (1.9 + boost * 0.8), -r * 0.25); g.lineTo(-r * 1.55, -r * 0.05); g.closePath(); g.fill(); }
+        g.restore();
+      }
+      function drawChase() {
+        const c = chase;
+        // moon (the ghost is flying toward it)
+        g.save(); g.fillStyle = "#fff4c2"; g.shadowColor = "#fff4c2"; g.shadowBlur = S * 0.05; g.beginPath(); g.arc(S * 0.9, S * 0.16, S * 0.055, 0, TAU); g.fill(); g.restore();
+        g.fillStyle = "rgba(0,0,0,0.12)"; [[0.88, 0.14, 0.012], [0.92, 0.18, 0.009], [0.9, 0.2, 0.006]].forEach(function (m) { g.beginPath(); g.arc(S * m[0], S * m[1], S * m[2], 0, TAU); g.fill(); });
+        // road
+        g.fillStyle = "#2a2440"; g.fillRect(0, S * 0.62, S, S * 0.12);
+        g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = S * 0.006; g.setLineDash([S * 0.04, S * 0.03]); g.lineDashOffset = -now * 0.02 * (c.vel > 0.00005 ? 1 : 0);
+        g.beginPath(); g.moveTo(0, S * 0.68); g.lineTo(S, S * 0.68); g.stroke(); g.setLineDash([]);
+        // pup waiting (before the grab), then pup in the ghost's bubble
+        if (phase === "chaseIn" && pup.vis > 0) drawPup(g, pup.x * S, (pup.y - pup.hop) * S, S * 0.085, { t: now, mood: pup.mood, glow: "#ff9fa8" });
+        if (c.hasPup && !c.caught) {
+          const bx = ghost.x * S, by = (ghost.y + 0.13) * S + Math.sin(now * 0.004) * S * 0.006;
+          g.save(); g.fillStyle = "rgba(201,195,255,0.18)"; g.strokeStyle = "rgba(255,255,255,0.6)"; g.lineWidth = S * 0.004; g.beginPath(); g.arc(bx, by, S * 0.062, 0, TAU); g.fill(); g.stroke(); g.restore();
+          drawPup(g, bx, by, S * 0.038, { t: now, mood: "sad" });
+        }
+        drawGhost();
+        // fire truck (Chris)
+        if (phase !== "chaseIn") {
+          drawTruck(c.tx * S, S * 0.6, S * 0.05, c.boost);
+          if (c.caught) drawPup(g, pup.x * S, (0.5 - pup.hop) * S, S * 0.045, { t: now, mood: "party", glow: "#ff9fa8" });
+        }
+        // speed meter under the road: fills with fast taps
+        if (phase === "chase") {
+          const mw = S * 0.6, mx = S * 0.2, my = S * 0.8, mh = S * 0.05, fill = Math.min(1, c.vel / 0.00042);
+          g.fillStyle = "rgba(255,255,255,0.08)"; g.beginPath(); g.roundRect(mx, my, mw, mh, mh / 2); g.fill();
+          if (fill > 0.02) { const gr = g.createLinearGradient(mx, 0, mx + mw, 0); KEY_COLS.forEach(function (col, i) { gr.addColorStop(i / (KEY_COLS.length - 1), col); }); g.save(); g.fillStyle = gr; g.shadowColor = "#ffd36b"; g.shadowBlur = S * 0.02; g.beginPath(); g.roundRect(mx, my, mw * fill, mh, mh / 2); g.fill(); g.restore(); }
+          // invite to tap: pulsing rings around the truck when idle
+          if (now - c.lastTap > 1200) { const p = (now % 900) / 900; g.save(); g.globalAlpha = (1 - p) * 0.6; g.strokeStyle = "#ffd36b"; g.lineWidth = S * 0.006; g.beginPath(); g.arc(c.tx * S, S * 0.6, S * (0.07 + p * 0.06), 0, TAU); g.stroke(); g.restore(); }
+        }
+      }
+
       // ---------- draw ----------
       function draw() {
         g.clearRect(0, 0, S, S);
@@ -554,6 +646,7 @@
         rings.forEach(function (r) { g.save(); g.globalAlpha = Math.max(0, r.life); g.strokeStyle = r.col; g.lineWidth = S * 0.008; g.beginPath(); g.arc(r.x * S, r.y * S, Math.min(r.max, r.r) * S, 0, TAU); g.stroke(); g.restore(); });
 
         if (phase === "puzzle") drawPuzzle();
+        else if (phase === "chase" || phase === "chaseDone" || phase === "chaseIn") drawChase();
         else {
           // free pup (intro / freed)
           if ((phase === "intro" || phase === "freed" || phase === "ghostIn") && pup.vis > 0) {
@@ -595,11 +688,11 @@
           ctx.setScore(0);
           Arcade.input.setPointerTarget(canvas);
           unResize = Arcade.board.onResize(function () { resize(); });
-          if (Arcade.voice) { try { Arcade.voice.preload(["Oh no! Where did the puppy go?", "Find the puppy!", "There he is!", "Find the key!", "Find the keys!", "You found a key!", "You saved him!", "Hooray!", "Put the puppy back together!", "Uh oh! A ghost!", "The cage is invisible! Tap to find it!"], "jessica"); Arcade.voice.preload(["Boo!", "Hee hee hee!", "Bye bye!"], "callum"); } catch (e) {} }
+          if (Arcade.voice) { try { Arcade.voice.preload(["Oh no! Where did the puppy go?", "Find the puppy!", "There he is!", "Find the key!", "Find the keys!", "You found a key!", "You saved him!", "Hooray!", "Put the puppy back together!", "Uh oh! A ghost!", "The cage is invisible! Tap to find it!", "Oh no! He's taking the puppy!", "Catch the ghost!", "Tap fast!", "Gotcha!"], "jessica"); Arcade.voice.preload(["Boo!", "Hee hee hee!", "Bye bye!"], "callum"); } catch (e) {} }
           try { barkEl = new Audio("audio/animals/dog.mp3"); barkEl.preload = "auto"; barkEl.volume = 0.7; barkEl.load(); } catch (e) {}   // warm the recording
           startRound();
           draw();
-          if (window.__pupDebug) window.__pupDebug.state = function () { return { phase: phase, S: S, objects: objects, keys: keys, cage: cage, ghost: ghost, puzzle: puzzle, rescues: rescues, roundIdx: roundIdx }; };
+          if (window.__pupDebug) window.__pupDebug.state = function () { return { phase: phase, S: S, objects: objects, keys: keys, cage: cage, ghost: ghost, puzzle: puzzle, chase: chase, rescues: rescues, roundIdx: roundIdx }; };
         },
         handleInput(intent) {
           if (intent.type !== "point") return;

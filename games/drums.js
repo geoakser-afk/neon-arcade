@@ -141,17 +141,62 @@
 
       // ---- voices ----
       function rnd(a, b) { return a + Math.random() * (b - a); }
+      // Real drum synthesis on the shared AudioContext: drums are mostly NOISE bursts + a pitch drop,
+      // which the shell's oscillator-only helpers can't make (the old 80 Hz sine bass and 40 ms
+      // sawtooth "snare" were inaudible on laptop/phone speakers).
+      let noiseBuf = null;
+      function noiseBuffer(c) {
+        if (noiseBuf) return noiseBuf;
+        const n = Math.floor(c.sampleRate * 1.5), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+        return (noiseBuf = buf);
+      }
+      // noise burst: filter type + freq, exponential decay over dur, vol 0..1
+      function noise(c, opts) {
+        const t0 = c.currentTime + (opts.when || 0);
+        const src = c.createBufferSource(); src.buffer = noiseBuffer(c);
+        const f = c.createBiquadFilter(); f.type = opts.filter || "bandpass"; f.frequency.value = opts.freq || 2000; f.Q.value = opts.q == null ? 0.8 : opts.q;
+        const gn = c.createGain(); gn.gain.setValueAtTime(0.0001, t0); gn.gain.linearRampToValueAtTime(opts.vol, t0 + 0.004); gn.gain.exponentialRampToValueAtTime(0.0001, t0 + opts.dur);
+        src.connect(f); f.connect(gn); gn.connect(c.destination);
+        src.start(t0, Math.random() * 0.8); src.stop(t0 + opts.dur + 0.05);
+        src.onended = function () { try { src.disconnect(); f.disconnect(); gn.disconnect(); } catch (e) {} };
+      }
+      // pitched hit: oscillator with a fast pitch drop (the "thump")
+      function thump(c, opts) {
+        const t0 = c.currentTime + (opts.when || 0);
+        const o = c.createOscillator(), gn = c.createGain(); o.type = opts.type || "sine";
+        o.frequency.setValueAtTime(opts.from, t0); o.frequency.exponentialRampToValueAtTime(opts.to, t0 + (opts.drop || 0.08));
+        gn.gain.setValueAtTime(0.0001, t0); gn.gain.linearRampToValueAtTime(opts.vol, t0 + 0.005); gn.gain.exponentialRampToValueAtTime(0.0001, t0 + opts.dur);
+        o.connect(gn); gn.connect(c.destination); o.start(t0); o.stop(t0 + opts.dur + 0.05);
+        o.onended = function () { try { o.disconnect(); gn.disconnect(); } catch (e) {} };
+      }
       function play(id) {
         const A = ctx.audio;
-        if (id === "bass") { A.tone(80, 0.3, { type: "sine", vol: 0.2, glide: 45, attack: 0.005 }); }
-        else if (id === "snare") {
-          A.tone(210, 0.1, { type: "sawtooth", vol: 0.08, glide: 130, attack: 0.003 });
-          for (let i = 0; i < 7; i++) A.tone(rnd(1800, 6500), 0.035, { type: "sawtooth", vol: 0.03, when: Math.random() * 0.05, attack: 0.002 });
+        if (A.muted) return;
+        const c = A.context && A.context();
+        if (!c) { A.thunk(); return; }
+        if (c.state !== "running") { try { c.resume(); } catch (e) {} }
+        if (id === "bass") {            // kick: deep thump with a click on top
+          thump(c, { from: 170, to: 48, drop: 0.09, dur: 0.42, vol: 0.9 });
+          noise(c, { filter: "lowpass", freq: 900, dur: 0.05, vol: 0.35 });
+        } else if (id === "snare") {    // snare: body thump + bright noise crack
+          thump(c, { from: 240, to: 150, drop: 0.05, dur: 0.16, vol: 0.45, type: "triangle" });
+          noise(c, { filter: "bandpass", freq: 2200, q: 0.5, dur: 0.22, vol: 0.55 });
+          noise(c, { filter: "highpass", freq: 5000, dur: 0.12, vol: 0.3 });
+        } else if (id === "hihat") {    // closed hat: short, crisp, high noise tick
+          noise(c, { filter: "highpass", freq: 7500, dur: 0.09, vol: 0.5 });
+          noise(c, { filter: "bandpass", freq: 10000, q: 1.5, dur: 0.05, vol: 0.3 });
+        } else if (id === "tom") {      // tom: round pitched drop
+          thump(c, { from: 330, to: 150, drop: 0.12, dur: 0.45, vol: 0.7 });
+          noise(c, { filter: "lowpass", freq: 1500, dur: 0.04, vol: 0.25 });
+        } else if (id === "cowbell") {  // cowbell: two clanky square partials
+          A.chord([562, 845], 0.3, { type: "square", vol: 0.14, attack: 0.003 });
+          noise(c, { filter: "bandpass", freq: 3000, q: 2, dur: 0.03, vol: 0.2 });
+        } else if (id === "crash") {    // crash: long bright wash + shimmer partials
+          noise(c, { filter: "highpass", freq: 3500, dur: 1.4, vol: 0.45 });
+          noise(c, { filter: "bandpass", freq: 6000, q: 0.7, dur: 0.9, vol: 0.3 });
+          for (let i = 0; i < 5; i++) A.tone(rnd(2500, 5200), 1.0, { type: "sine", vol: 0.035, when: Math.random() * 0.03, attack: 0.004 });
         }
-        else if (id === "hihat") { for (let i = 0; i < 6; i++) A.tone(rnd(5000, 9500), 0.05, { type: i % 2 ? "square" : "sawtooth", vol: 0.022, when: Math.random() * 0.02, attack: 0.002 }); }
-        else if (id === "tom") { A.tone(220, 0.25, { type: "sine", vol: 0.18, glide: 150, attack: 0.005 }); }
-        else if (id === "cowbell") { A.chord([560, 840], 0.15, { type: "square", vol: 0.06, attack: 0.003 }); }
-        else if (id === "crash") { for (let i = 0; i < 9; i++) A.tone(rnd(2000, 5000), 0.8, { type: "sine", vol: 0.03, when: Math.random() * 0.03, attack: 0.004 }); }
       }
 
       function hitPad(pd) {
