@@ -122,6 +122,9 @@
         return { type: "ghost", locks: Math.min(6, 3 + lvl), speed: 1 + 0.25 * lvl };
       }
 
+      let barkEl = null, barkAt = -9999;
+      // real dog recording (audio/animals/dog.mp3, Wikimedia Commons — see audio/animals/CREDITS.md), shared with Farm
+      function bark() { if (now - barkAt < 900) return; barkAt = now; try { if (!barkEl) { barkEl = new Audio("audio/animals/dog.mp3"); barkEl.preload = "auto"; barkEl.volume = 0.7; } barkEl.currentTime = 0; const p = barkEl.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {} }
       function say(parts, voice) { if (!Arcade.voice) return; if (now - voiceAt < 250) return; voiceAt = now; try { Arcade.voice.stop(); Arcade.voice.say(parts, voice || "jessica"); } catch (e) {} }
 
       // ---------- helpers ----------
@@ -400,7 +403,7 @@
         // ---- phases
         if (phase === "intro") {
           pup.hop = Math.abs(Math.sin(pt * 0.006)) * 0.02;
-          if (pt > 400 && pt < 400 + dt) say("Woof woof!", "callum");
+          if (pt > 400 && pt < 400 + dt) bark();
           if (pt > 2000 && pup.vis > 0) {
             puff(pup.x, pup.y, 24, "rgba(220,215,255,0.8)", 0.0003); pup.vis = 0;
             ctx.audio.tone(420, 0.35, { type: "triangle", vol: 0.08, glide: 90 });
@@ -422,7 +425,7 @@
             if (cage.open >= 1 && pt > 0) {
               setPhase("freed"); pup.mood = "party"; pup.x = cage.x; pup.y = cage.y; addStar();
               ctx.audio.arp([523, 659, 784, 1046, 1318], { dur: 0.2, step: 0.08, vol: 0.14 });
-              say(["You saved him!", "Hooray!"]); puff(cage.x, cage.y, 60, null, 0.0005);
+              say(["You saved him!", "Hooray!"]); setTimeout(function () { if (ctx) bark(); }, 1800); puff(cage.x, cage.y, 60, null, 0.0005);
               if (ghost) { ghost.gone = true; ghost.keys = 0; setTimeout(function () { if (ctx) say("Bye bye!", "callum"); }, 1200); }
             }
           }
@@ -506,7 +509,7 @@
           ctx.audio.tone(330, 0.08, { type: "sine", vol: 0.04, glide: 420 });
         } else if (phase === "freed" || phase === "intro") {
           // tapping the pup = happy bark
-          if (pup.vis > 0 && Math.hypot(x - pup.x, y - pup.y) < 0.15 && now - voiceAt > 1500) { say("Woof woof!", "callum"); puff(pup.x, pup.y, 8, "#ffd36b", 0.0002); }
+          if (pup.vis > 0 && Math.hypot(x - pup.x, y - pup.y) < 0.15 && now - barkAt > 1500) { bark(); puff(pup.x, pup.y, 8, "#ffd36b", 0.0002); }
         }
       }
       function move(x, y) {
@@ -528,7 +531,7 @@
             if (puzzle.pieces.every(function (q) { return q.placed; })) {
               puzzle.done = true; puzzle.t = 0; addStar();
               ctx.audio.arp([523, 659, 784, 1046, 1318, 1568], { dur: 0.22, step: 0.09, vol: 0.14 });
-              say(["Hooray!", "Woof woof!"]); puff(puzzle.x + puzzle.size / 2, puzzle.y + puzzle.size / 2, 70, null, 0.0006);
+              say("Hooray!"); setTimeout(function () { if (ctx) bark(); }, 900); puff(puzzle.x + puzzle.size / 2, puzzle.y + puzzle.size / 2, 70, null, 0.0006);
             }
           } else ctx.audio.soft();
         }
@@ -592,7 +595,8 @@
           ctx.setScore(0);
           Arcade.input.setPointerTarget(canvas);
           unResize = Arcade.board.onResize(function () { resize(); });
-          if (Arcade.voice) { try { Arcade.voice.preload(["Oh no! Where did the puppy go?", "Find the puppy!", "There he is!", "Find the key!", "Find the keys!", "You found a key!", "You saved him!", "Hooray!", "Put the puppy back together!", "Uh oh! A ghost!", "The cage is invisible! Tap to find it!"], "jessica"); Arcade.voice.preload(["Woof woof!", "Boo!", "Hee hee hee!", "Bye bye!"], "callum"); } catch (e) {} }
+          if (Arcade.voice) { try { Arcade.voice.preload(["Oh no! Where did the puppy go?", "Find the puppy!", "There he is!", "Find the key!", "Find the keys!", "You found a key!", "You saved him!", "Hooray!", "Put the puppy back together!", "Uh oh! A ghost!", "The cage is invisible! Tap to find it!"], "jessica"); Arcade.voice.preload(["Boo!", "Hee hee hee!", "Bye bye!"], "callum"); } catch (e) {} }
+          try { barkEl = new Audio("audio/animals/dog.mp3"); barkEl.preload = "auto"; barkEl.volume = 0.7; barkEl.load(); } catch (e) {}   // warm the recording
           startRound();
           draw();
           if (window.__pupDebug) window.__pupDebug.state = function () { return { phase: phase, S: S, objects: objects, keys: keys, cage: cage, ghost: ghost, puzzle: puzzle, rescues: rescues, roundIdx: roundIdx }; };
@@ -609,7 +613,7 @@
         teardown() {
           if (unResize) unResize(); unResize = null;
           try { if (Arcade.voice) Arcade.voice.stop(); } catch (e) {}
-          ctx = canvas = g = offc = null; objects = []; keys = []; particles = []; rings = []; cage = ghost = puzzle = drag = null;
+          if (barkEl) { try { barkEl.pause(); } catch (e) {} } barkEl = null; ctx = canvas = g = offc = null; objects = []; keys = []; particles = []; rings = []; cage = ghost = puzzle = drag = null;
         }
       };
     }
