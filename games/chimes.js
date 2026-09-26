@@ -83,7 +83,7 @@
       let state = "pupHit", st = 0;   // pupHit → guess → win → yourTurn → pupThink → pupGuess → pupWin → pupHit
       let target = -1, wrongs = 0, lastHint = 0, turns = 0;
       let pup = { x: 0.5, y: 0.9, r: 0.055, cover: false, mood: "happy", look: 0, mallet: null };   // mallet: {tx, ty, t, dur}
-      let pupPick = -1, pupWrong = -1;
+      let pupPick = -1, pupWrong = -1, eyes = 0, hidden = false, state_hitDone = false;   // eyes: 0..1 how far the "close your eyes" curtain is down
       let particles = [], rings = [], barkEl = null, barkAt = -9999, voiceAt = -9999, pointer = { x: -1, y: -1, seen: -9999 };
 
       function say(parts) { if (!Arcade.voice || now - voiceAt < 300) return; voiceAt = now; try { Arcade.voice.stop(); Arcade.voice.say(parts, "jessica"); } catch (e) {} }
@@ -107,7 +107,8 @@
         ctx.audio.tone(f * 2.76, 0.9, { type: "sine", vol: 0.05 * v, attack: 0.003 });
         ctx.audio.tone(f * 5.4, 0.35, { type: "sine", vol: 0.025 * v, attack: 0.002 });
         ctx.audio.tone(f * 1.003, 1.6, { type: "triangle", vol: 0.03 * v, attack: 0.02 });
-        t.wob = 1;
+        t.wob = hidden ? 0 : 1;
+        if (hidden) return;
         rings.push({ x: t.x, y: t.top + t.h * 0.3, r: 0.02, col: t.col, life: 1 });
         for (let k = 0; k < (reduced ? 2 : 6); k++) { const a = Math.random() * TAU; particles.push({ x: t.x, y: t.top + t.h * 0.3, vx: Math.cos(a) * 0.0002, vy: Math.sin(a) * 0.0002 - 0.0001, life: 1, r: 0.006, col: t.col }); }
       }
@@ -132,6 +133,7 @@
           const want = (state === "guess" && i === target) ? hintGlow() * (0.6 + 0.4 * Math.sin(now * 0.006)) : 0;
           t.glow += (want - t.glow) * Math.min(1, dt / 200);
         });
+        eyes += (((state === "eyesClosed" || state === "eyesOpen") ? 1 : 0) - eyes) * Math.min(1, dt / 260);
         if (pup.mallet) {
           const m = pup.mallet; m.t += dt;
           if (m.t >= m.dur && !m.hit) { m.hit = true; ringTube(m.i, m.soft ? 0.55 : 1); if (m.then) m.then(); }
@@ -141,10 +143,12 @@
 
         if (state === "pupHit") {
           pup.cover = false; pup.mood = "happy";
-          if (st > 900 && target < 0) {
-            target = Math.floor(Math.random() * 6); wrongs = 0;
-            pupSwing(target, false, function () { setState("guess"); lastHint = now; say("Which one did I hit?"); });
-          }
+          if (st > 700 && target < 0) { target = Math.floor(Math.random() * 6); wrongs = 0; setState("eyesClosed"); say("Close your eyes!"); }
+        } else if (state === "eyesClosed") {
+          hidden = true;
+          if (st > 1700 && !pup.mallet && !state_hitDone) { state_hitDone = true; pupSwing(target, false, function () { setState("eyesOpen"); }); }
+        } else if (state === "eyesOpen") {
+          if (st > 900) { hidden = false; state_hitDone = false; setState("guess"); lastHint = now; say(["Open your eyes!", "Which one did I hit?"]); }
         } else if (state === "guess") {
           if (now - lastHint > 3200 && !pup.mallet) { lastHint = now; pupSwing(target, true); }   // re-hit as a hint
         } else if (state === "win") {
@@ -171,6 +175,7 @@
       }
 
       function tap(x, y) {
+        if (state === "eyesClosed" || state === "eyesOpen") return;
         const i = tubeAt(x, y);
         if (i < 0) { ctx.audio.tone(330, 0.08, { type: "sine", vol: 0.04, glide: 420 }); return; }
         if (state === "guess") {
@@ -212,6 +217,15 @@
           drawMallet(g, hx, hy, S * 0.1, m.hit ? 0.6 : -1.2 + e * 1.8);
         } else if (state === "pupHit" || state === "pupThink" || state === "guess") drawMallet(g, px + pr * 1.1, py - pr * 0.3, S * 0.1, -0.5 + Math.sin(now * 0.003) * 0.1);
         if (state === "pupThink") { g.save(); g.fillStyle = "rgba(255,255,255,0.9)"; g.beginPath(); g.arc(px + pr * 1.6, py - pr * 1.6, pr * 0.55, 0, TAU); g.fill(); g.fillStyle = "#2a2434"; g.font = "800 " + Math.round(pr * 0.7) + "px system-ui"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("?", px + pr * 1.6, py - pr * 1.55); g.restore(); }
+        if (eyes > 0.01) {
+          g.save(); g.globalAlpha = Math.min(1, eyes * 1.05); g.fillStyle = "#0d0a18"; g.fillRect(0, S * 0.12, S, S * 0.88); g.restore();
+          g.save(); g.globalAlpha = eyes; g.strokeStyle = "#ffffff"; g.lineWidth = S * 0.018; g.lineCap = "round";
+          [-1, 1].forEach(function (d) { const ex = S * (0.5 + d * 0.14), ey = S * 0.5; g.beginPath(); g.arc(ex, ey - S * 0.05, S * 0.09, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke();
+            for (let k = -1; k <= 1; k++) { const a = Math.PI / 2 + k * 0.5, x1 = ex + Math.cos(a) * S * 0.09, y1 = ey - S * 0.05 + Math.sin(a) * S * 0.09; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x1 + Math.cos(a) * S * 0.035, y1 + Math.sin(a) * S * 0.035); g.stroke(); } });
+          // sound waves so he knows something is ringing
+          if (state === "eyesOpen" || (pup.mallet && pup.mallet.hit)) for (let i = 0; i < 3; i++) { const p = ((now * 0.0008) + i / 3) % 1; g.globalAlpha = eyes * (1 - p) * 0.7; g.strokeStyle = "#c9c3ff"; g.lineWidth = S * 0.008; g.beginPath(); g.arc(S * 0.5, S * 0.5, S * (0.16 + p * 0.2), 0, TAU); g.stroke(); }
+          g.restore();
+        }
         // Chris's mallet follows the pointer
         if (now - pointer.seen < 1500 && pointer.x >= 0) drawMallet(g, pointer.x, pointer.y, S * 0.09, -0.7);
         particles.forEach(function (p) { g.save(); g.globalAlpha = Math.max(0, Math.min(1, p.life)); g.fillStyle = p.col; if (p.rect) { g.translate(p.x * S, p.y * S); g.rotate(p.x * 40); g.fillRect(-p.r * S, -p.r * S * 0.6, p.r * S * 2, p.r * S * 1.2); } else { g.beginPath(); g.arc(p.x * S, p.y * S, p.r * S, 0, TAU); g.fill(); } g.restore(); });
@@ -223,14 +237,14 @@
           const wrap = document.createElement("div"); wrap.style.display = "flex"; wrap.style.flexDirection = "column"; wrap.style.alignItems = "center";
           canvas = document.createElement("canvas"); canvas.style.borderRadius = "18px"; canvas.style.background = "#131026"; canvas.style.cursor = "none"; canvas.style.boxShadow = "0 0 46px rgba(201,195,255,0.16)"; canvas.style.touchAction = "none";
           g = canvas.getContext("2d"); wrap.appendChild(canvas);
-          const hint = document.createElement("div"); hint.className = "hint"; hint.textContent = "The pup hits a chime — tap the one that's ringing. Then it's your turn to hit one."; wrap.appendChild(hint);
+          const hint = document.createElement("div"); hint.className = "hint"; hint.textContent = "Close your eyes while the pup hits a chime, then tap the one that's ringing. Then it's your turn."; wrap.appendChild(hint);
           stage.appendChild(wrap);
-          now = 0; found = 0; level = 1; streak = 0; turns = 0; target = -1; particles = []; rings = []; state = "pupHit"; st = 0; pup.mallet = null;
+          now = 0; found = 0; level = 1; streak = 0; turns = 0; target = -1; particles = []; rings = []; state = "pupHit"; st = 0; pup.mallet = null; eyes = 0; hidden = false; state_hitDone = false;
           stars = ctx.storage.get("stars", 0);
           resize(); ctx.setScore(0);
           Arcade.input.setPointerTarget(canvas);
           unResize = Arcade.board.onResize(function () { resize(); });
-          if (Arcade.voice) { try { Arcade.voice.preload(["Which one did I hit?", "Your turn! Hit a chime!", "Hmm, let me listen.", "Yes!"], "jessica"); } catch (e) {} }
+          if (Arcade.voice) { try { Arcade.voice.preload(["Close your eyes!", "Open your eyes!", "Which one did I hit?", "Your turn! Hit a chime!", "Hmm, let me listen.", "Yes!"], "jessica"); } catch (e) {} }
           try { barkEl = new Audio("audio/animals/dog.mp3"); barkEl.preload = "auto"; barkEl.volume = 0.6; barkEl.load(); } catch (e) {}
           draw();
           if (window.__chimesDebug) window.__chimesDebug.state = function () { return { state: state, target: target, tubes: tubes, pupPick: pupPick, found: found, level: level }; };
